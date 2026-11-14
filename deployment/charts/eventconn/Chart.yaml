@@ -1,0 +1,36 @@
+apiVersion: v2
+name: eventconn
+description: Umbrella Helm chart deploying the complete 7-service EventConn application stack
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: base-microservice
+    version: 1.0.0
+    repository: "file://../base-microservice"
+    alias: frontend
+  - name: base-microservice
+    version: 1.0.0
+    repository: "file://../base-microservice"
+    alias: api-gateway
+  - name: base-microservice
+    version: 1.0.0
+    repository: "file://../base-microservice"
+    alias: auth-service
+  - name: base-microservice
+    version: 1.0.0
+    repository: "file://../base-microservice"
+    alias: event-service
+  - name: base-microservice
+    version: 1.0.0
+    repository: "file://../base-microservice"
+    alias: booking-service
+  - name: base-microservice
+    version: 1.0.0
+    repository: "file://../base-microservice"
+    alias: notification-service
+  - name: base-microservice
+    version: 1.0.0
+    repository: "file://../base-microservice"
+    alias: payment-service

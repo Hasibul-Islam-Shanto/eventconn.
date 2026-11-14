@@ -1,0 +1,24 @@
+dependencies:
+- name: base-microservice
+  repository: file://../base-microservice
+  version: 1.0.0
+- name: base-microservice
+  repository: file://../base-microservice
+  version: 1.0.0
+- name: base-microservice
+  repository: file://../base-microservice
+  version: 1.0.0
+- name: base-microservice
+  repository: file://../base-microservice
+  version: 1.0.0
+- name: base-microservice
+  repository: file://../base-microservice
+  version: 1.0.0
+- name: base-microservice
+  repository: file://../base-microservice
+  version: 1.0.0
+- name: base-microservice
+  repository: file://../base-microservice
+  version: 1.0.0
+digest: sha256:0a1f1c91c78b2be00df8307e344bc554f06ee12bdc3c8daeaf4ce4a8cc94e7b6
+generated: "2026-11-14T13:07:52.151401+06:00"

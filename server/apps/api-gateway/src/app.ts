@@ -12,7 +12,43 @@ import {
 import type { ServiceEnv } from "../../../packages/config/src/env.js";
 export function createGateway(env: ServiceEnv) {
   const app = baseApp("api-gateway");
-  app.use(cors({ origin: env.CLIENT_ORIGIN, credentials: true }));
+
+  const isAllowedOrigin = (origin: string | undefined): boolean => {
+    if (!origin) return true;
+    try {
+      const parsed = new URL(origin);
+      let clientOriginHostname = "";
+      if (env.CLIENT_ORIGIN) {
+        try {
+          clientOriginHostname = new URL(env.CLIENT_ORIGIN).hostname;
+        } catch {}
+      }
+      return (
+        parsed.hostname === "eventconn.com" ||
+        parsed.hostname.endsWith(".eventconn.com") ||
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "127.0.0.1" ||
+        origin === env.CLIENT_ORIGIN ||
+        origin.replace(/\/$/, "") === env.CLIENT_ORIGIN?.replace(/\/$/, "") ||
+        (clientOriginHostname !== "" && parsed.hostname === clientOriginHostname)
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new AppError(403, "ORIGIN_DENIED", "Origin not allowed"));
+        }
+      },
+      credentials: true,
+    }),
+  );
   app.use(
     rateLimit({
       windowMs: 60000,
@@ -49,7 +85,7 @@ export function createGateway(env: ServiceEnv) {
     if (
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
       req.get("origin") &&
-      req.get("origin") !== env.CLIENT_ORIGIN
+      !isAllowedOrigin(req.get("origin"))
     )
       throw new AppError(403, "ORIGIN_DENIED", "Origin not allowed");
     const publicRoute =

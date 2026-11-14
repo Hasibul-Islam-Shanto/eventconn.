@@ -1,0 +1,55 @@
+# KinD Cluster Configuration for Local EventConn
+# Maps host ports directly to Kubernetes NodePorts so services are accessible on localhost without kubectl port-forward
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+      # Frontend -> localhost:3000
+      - containerPort: 30000
+        hostPort: 3000
+        protocol: TCP
+      # API Gateway -> localhost:4000
+      - containerPort: 30001
+        hostPort: 4000
+        protocol: TCP
+      # Auth Service -> localhost:4001
+      - containerPort: 30002
+        hostPort: 4001
+        protocol: TCP
+      # Event Service -> localhost:4002
+      - containerPort: 30003
+        hostPort: 4002
+        protocol: TCP
+      # Booking Service -> localhost:4003
+      - containerPort: 30004
+        hostPort: 4003
+        protocol: TCP
+      # Notification Service -> localhost:4004
+      - containerPort: 30005
+        hostPort: 4004
+        protocol: TCP
+      # Payment Service -> localhost:4005
+      - containerPort: 30006
+        hostPort: 4005
+        protocol: TCP
+      # PostgreSQL -> localhost:5433
+      - containerPort: 30007
+        hostPort: 5433
+        protocol: TCP
+      # RabbitMQ Management -> localhost:15672
+      - containerPort: 30008
+        hostPort: 15672
+        protocol: TCP

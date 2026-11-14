@@ -1,0 +1,281 @@
+# ==============================================================================
+# PRODUCTION ENVIRONMENT VALUES (EC2 DEPLOYMENT)
+# Umbrella Chart: eventconn
+#
+# QUICK START FOR EC2:
+# 1. Replace <YOUR_EC2_IP> with your EC2 Public IP (e.g. 54.210.12.34) or domain.
+# 2. Or pass it directly during helm install/upgrade:
+#    helm upgrade --install eventconn deployment/charts/eventconn \
+#      -n production \
+#      -f deployment/environments/production/values.yaml \
+#      --set frontend.env.NEXT_PUBLIC_API_BASE_URL="http://<YOUR_EC2_IP>:4000/api" \
+#      --set api-gateway.env.CLIENT_ORIGIN="http://<YOUR_EC2_IP>:3000"
+# ==============================================================================
+
+# Shared Infrastructure (Set enabled: false if using AWS RDS / Managed RabbitMQ)
+infrastructure:
+  postgres:
+    enabled: true
+  rabbitmq:
+    enabled: true
+  secrets:
+    enabled: true
+    # CHANGE THESE TO SECURE STRINGS IN REAL PRODUCTION:
+    jwtSecret: "change-me-to-a-secure-production-jwt-secret-min-32-chars"
+    internalSecret: "change-me-to-a-secure-production-internal-secret-min-32-chars"
+    rabbitmqUrl: "amqp://guest:guest@rabbitmq:5672"
+    authDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/auth_db"
+    eventDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/event_db"
+    bookingDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/booking_db"
+    notificationDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/notification_db"
+    paymentDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/payment_db"
+    smtpUser: ""
+    smtpPass: ""
+
+frontend:
+  fullnameOverride: "frontend"
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-frontend"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 3000
+    targetPort: 3000
+    nodePort: 30000
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 20
+    periodSeconds: 15
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  env:
+    NODE_ENV: "production"
+    PORT: "3000"
+    # REPLACE <YOUR_EC2_IP> WITH YOUR ACTUAL EC2 PUBLIC IP OR DOMAIN:
+    NEXT_PUBLIC_API_BASE_URL: "http://<YOUR_EC2_IP>:4000/api"
+  autoscaling:
+    enabled: false
+
+api-gateway:
+  fullnameOverride: "api-gateway"
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-api-gateway"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 4000
+    targetPort: 4000
+    nodePort: 30001
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 800m
+      memory: 512Mi
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  env:
+    NODE_ENV: "production"
+    PORT: "4000"
+    LOG_LEVEL: "info"
+    # REPLACE <YOUR_EC2_IP> WITH YOUR ACTUAL EC2 PUBLIC IP OR DOMAIN:
+    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    AUTH_SERVICE_URL: "http://auth-service:4001"
+    EVENT_SERVICE_URL: "http://event-service:4002"
+    BOOKING_SERVICE_URL: "http://booking-service:4003"
+    PAYMENT_SERVICE_URL: "http://payment-service:4005"
+  autoscaling:
+    enabled: false
+
+auth-service:
+  fullnameOverride: "auth-service"
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-auth-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: ClusterIP
+    port: 4001
+    targetPort: 4001
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 800m
+      memory: 512Mi
+  env:
+    NODE_ENV: "production"
+    PORT: "4001"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false
+
+event-service:
+  fullnameOverride: "event-service"
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-event-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: ClusterIP
+    port: 4002
+    targetPort: 4002
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 800m
+      memory: 512Mi
+  env:
+    NODE_ENV: "production"
+    PORT: "4002"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    AUTH_SERVICE_URL: "http://auth-service:4001"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false
+
+booking-service:
+  fullnameOverride: "booking-service"
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-booking-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: ClusterIP
+    port: 4003
+    targetPort: 4003
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 800m
+      memory: 512Mi
+  env:
+    NODE_ENV: "production"
+    PORT: "4003"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    EVENT_SERVICE_URL: "http://event-service:4002"
+    AUTH_SERVICE_URL: "http://auth-service:4001"
+    PAYMENT_SERVICE_URL: "http://payment-service:4005"
+    HOLD_MINUTES: "10"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false
+
+notification-service:
+  fullnameOverride: "notification-service"
+  replicaCount: 1
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-notification-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: ClusterIP
+    port: 4004
+    targetPort: 4004
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: "production"
+    PORT: "4004"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false
+
+payment-service:
+  fullnameOverride: "payment-service"
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-payment-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: ClusterIP
+    port: 4005
+    targetPort: 4005
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 800m
+      memory: 512Mi
+  env:
+    NODE_ENV: "production"
+    PORT: "4005"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    AUTH_SERVICE_URL: "http://auth-service:4001"
+    BOOKING_SERVICE_URL: "http://booking-service:4003"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false

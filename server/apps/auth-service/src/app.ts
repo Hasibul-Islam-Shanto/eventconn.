@@ -35,7 +35,7 @@ export function createAuthApp(
   );
   const cookie = {
     httpOnly: true,
-    secure: production,
+    secure: false,
     sameSite: "lax" as const,
     path: "/",
   };

@@ -1,0 +1,261 @@
+# ==============================================================================
+# LOCAL DEVELOPMENT ENVIRONMENT VALUES
+# Umbrella Chart: eventconn
+#
+# Access Services Directly on Localhost:
+#   - Frontend:              http://localhost:3000
+#   - API Gateway:           http://localhost:4000 (Health: http://localhost:4000/api/health)
+#   - Auth Service:          http://localhost:4001
+#   - Event Service:         http://localhost:4002
+#   - Booking Service:       http://localhost:4003
+#   - Notification Service:  http://localhost:4004
+#   - Payment Service:       http://localhost:4005
+#   - PostgreSQL:            localhost:5433 (in-cluster: postgres:5432)
+#   - RabbitMQ Management:   http://localhost:15672 (guest/guest)
+# ==============================================================================
+
+infrastructure:
+  postgres:
+    enabled: true
+    serviceType: NodePort
+    nodePort: 30007
+  rabbitmq:
+    enabled: true
+    serviceType: NodePort
+    nodePort: 30008
+    managementNodePort: 30009
+  secrets:
+    enabled: true
+    jwtSecret: "local-dev-secret-at-least-32-characters-long"
+    internalSecret: "local-dev-internal-secret-at-least-32-chars"
+    rabbitmqUrl: "amqp://guest:guest@rabbitmq:5672"
+    authDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/auth_db"
+    eventDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/event_db"
+    bookingDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/booking_db"
+    notificationDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/notification_db"
+    paymentDatabaseUrl: "postgresql://postgres:postgres@postgres:5432/payment_db"
+    smtpUser: ""
+    smtpPass: ""
+
+frontend:
+  fullnameOverride: "frontend"
+  replicaCount: 1
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-frontend"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 3000
+    targetPort: 3000
+    nodePort: 30000
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: "development"
+    PORT: "3000"
+    NEXT_PUBLIC_API_BASE_URL: "http://localhost:4000/api"
+  autoscaling:
+    enabled: false
+
+api-gateway:
+  fullnameOverride: "api-gateway"
+  replicaCount: 1
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-api-gateway"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 4000
+    targetPort: 4000
+    nodePort: 30001
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: "development"
+    PORT: "4000"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://localhost:3000"
+    AUTH_SERVICE_URL: "http://auth-service:4001"
+    EVENT_SERVICE_URL: "http://event-service:4002"
+    BOOKING_SERVICE_URL: "http://booking-service:4003"
+    PAYMENT_SERVICE_URL: "http://payment-service:4005"
+  autoscaling:
+    enabled: false
+
+auth-service:
+  fullnameOverride: "auth-service"
+  replicaCount: 1
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-auth-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 4001
+    targetPort: 4001
+    nodePort: 30002
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: "development"
+    PORT: "4001"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://localhost:3000"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false
+
+event-service:
+  fullnameOverride: "event-service"
+  replicaCount: 1
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-event-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 4002
+    targetPort: 4002
+    nodePort: 30003
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: "development"
+    PORT: "4002"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://localhost:3000"
+    AUTH_SERVICE_URL: "http://auth-service:4001"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false
+
+booking-service:
+  fullnameOverride: "booking-service"
+  replicaCount: 1
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-booking-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 4003
+    targetPort: 4003
+    nodePort: 30004
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: "development"
+    PORT: "4003"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://localhost:3000"
+    EVENT_SERVICE_URL: "http://event-service:4002"
+    AUTH_SERVICE_URL: "http://auth-service:4001"
+    PAYMENT_SERVICE_URL: "http://payment-service:4005"
+    HOLD_MINUTES: "10"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false
+
+notification-service:
+  fullnameOverride: "notification-service"
+  replicaCount: 1
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-notification-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 4004
+    targetPort: 4004
+    nodePort: 30005
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: "development"
+    PORT: "4004"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://localhost:3000"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false
+
+payment-service:
+  fullnameOverride: "payment-service"
+  replicaCount: 1
+  image:
+    repository: "ghcr.io/hasibul-islam-shanto/eventconn-payment-service"
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0"
+  service:
+    type: NodePort
+    port: 4005
+    targetPort: 4005
+    nodePort: 30006
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: "development"
+    PORT: "4005"
+    LOG_LEVEL: "info"
+    CLIENT_ORIGIN: "http://localhost:3000"
+    AUTH_SERVICE_URL: "http://auth-service:4001"
+    BOOKING_SERVICE_URL: "http://booking-service:4003"
+  migration:
+    enabled: false
+  autoscaling:
+    enabled: false

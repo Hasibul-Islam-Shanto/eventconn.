@@ -37,4 +37,9 @@ npm run dev
 
 Open http://localhost:3000. The gateway is http://localhost:4000/api.
 
+## Kubernetes & Helm Deployments
+
+- **Local Deployment (KinD & Helm):** See [`deployment/local/README.md`](deployment/local/README.md)
+- **Production Deployment (AWS EC2):** See [`deployment/production/README.md`](deployment/production/README.md)
+
 See the [backend README](server/README.md) and [frontend README](client/README.md) for service ports, API contracts, and environment variables.

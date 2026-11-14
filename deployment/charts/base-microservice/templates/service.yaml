@@ -15,5 +15,8 @@ spec:
       targetPort: {{ .Values.service.targetPort | default "http" }}
       protocol: {{ .Values.service.protocol | default "TCP" }}
       name: http
+      {{- if .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
   selector:
     {{- include "base-microservice.selectorLabels" . | nindent 4 }}

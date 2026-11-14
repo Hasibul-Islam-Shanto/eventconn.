@@ -17,8 +17,7 @@ ingress:
   enabled: true
   className: "nginx"
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "20m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
@@ -27,10 +26,7 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-  tls:
-    - secretName: eventconn-api-gateway-tls
-      hosts:
-        - "api.eventconn.com"
+  tls: []
 
 resources:
   limits:
@@ -64,7 +60,8 @@ env:
   NODE_ENV: "production"
   PORT: "4000"
   LOG_LEVEL: "info"
-  CLIENT_ORIGIN: "https://eventconn.com"
+  # Set to your EC2 public IP or domain:
+  CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
   AUTH_SERVICE_URL: "http://auth-service:4001"
   EVENT_SERVICE_URL: "http://event-service:4002"
   BOOKING_SERVICE_URL: "http://booking-service:4003"

@@ -20,7 +20,7 @@ spec:
         app.kubernetes.io/component: db-migration
     spec:
       restartPolicy: {{ .Values.migration.restartPolicy | default "Never" }}
-      serviceAccountName: {{ include "base-microservice.serviceAccountName" . }}
+      serviceAccountName: {{ .Values.migration.serviceAccountName | default "default" }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
