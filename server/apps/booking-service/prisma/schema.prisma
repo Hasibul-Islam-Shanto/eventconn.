@@ -1,0 +1,121 @@
+generator client {
+ provider = "prisma-client-js"
+ output = "../generated/client"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("BOOKING_DATABASE_URL")
+}
+enum HoldStatus {
+ ACTIVE
+ CONVERTED
+ EXPIRED
+ CANCELLED
+}
+enum BookingStatus {
+ PENDING
+ CONFIRMED
+ CANCELLED
+ COMPLETED
+}
+enum PaymentStatus {
+ PENDING
+ SUCCEEDED
+ FAILED
+ CANCELLED
+}
+model TicketInventory {
+ id String @id @default(uuid()) @db.Uuid
+ eventId String @db.Uuid
+ ticketTypeId String @unique @db.Uuid
+ organizerId String @db.Uuid
+ totalQuantity Int
+ availableQuantity Int
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ @@index([eventId])
+}
+model TicketHold {
+ id String @id @default(uuid()) @db.Uuid
+ userId String @db.Uuid
+ eventId String @db.Uuid
+ ticketTypeId String @db.Uuid
+ organizerId String @db.Uuid
+ ticketName String
+ unitPrice Int
+ quantity Int
+ expiresAt DateTime @db.Timestamptz(3)
+ status HoldStatus @default(ACTIVE)
+ booking Booking?
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ @@index([status,expiresAt])
+}
+model Booking {
+ id String @id @default(uuid()) @db.Uuid
+ userId String @db.Uuid
+ organizerId String @db.Uuid
+ eventId String @db.Uuid
+ holdId String @unique @db.Uuid
+ hold TicketHold @relation(fields:[holdId],references:[id])
+ status BookingStatus @default(PENDING)
+ subtotal Int
+ fees Int
+ total Int
+ currency String @default("BDT")
+ paymentStatus PaymentStatus @default(PENDING)
+ expiresAt DateTime @db.Timestamptz(3)
+ items BookingItem[]
+ tickets IssuedTicket[]
+ idempotencyRecords IdempotencyRecord[]
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ @@index([userId,createdAt])
+ @@index([organizerId,createdAt])
+ @@index([status,expiresAt])
+}
+model BookingItem {
+ id String @id @default(uuid()) @db.Uuid
+ bookingId String @db.Uuid
+ booking Booking @relation(fields:[bookingId],references:[id])
+ ticketTypeId String @db.Uuid
+ ticketName String
+ quantity Int
+ unitPrice Int
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model IdempotencyRecord {
+ id String @id @default(uuid()) @db.Uuid
+ userId String @db.Uuid
+ key String
+ fingerprint String
+ bookingId String @db.Uuid
+ booking Booking @relation(fields:[bookingId],references:[id])
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@unique([userId,key])
+}
+model ProcessedEvent {
+ eventId String @id @db.Uuid
+ result Json?
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model IssuedTicket {
+ id String @id @default(uuid()) @db.Uuid
+ bookingId String @db.Uuid
+ booking Booking @relation(fields:[bookingId],references:[id],onDelete:Cascade)
+ eventId String @db.Uuid
+ organizerId String @db.Uuid
+ ticketTypeId String @db.Uuid
+ ticketName String
+ ticketNumber Int
+ ticketCode String @unique
+ qrSignature String
+ status String @default("VALID")
+ checkedInAt DateTime? @db.Timestamptz(3)
+ checkedInBy String? @db.Uuid
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ @@index([bookingId])
+ @@index([eventId,ticketCode])
+ @@index([organizerId])
+}

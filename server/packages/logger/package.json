@@ -1,0 +1,5 @@
+{
+  "name": "@eventconn/logger",
+  "private": true,
+  "type": "module"
+}

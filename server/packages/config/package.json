@@ -1,0 +1,5 @@
+{
+  "name": "@eventconn/config",
+  "private": true,
+  "type": "module"
+}

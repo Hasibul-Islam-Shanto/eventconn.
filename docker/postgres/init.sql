@@ -1,0 +1,10 @@
+CREATE DATABASE auth_db;
+CREATE DATABASE event_db;
+CREATE DATABASE booking_db;
+CREATE DATABASE notification_db;
+CREATE DATABASE payment_db;
+CREATE DATABASE auth_test;
+CREATE DATABASE event_test;
+CREATE DATABASE booking_test;
+CREATE DATABASE notification_test;
+CREATE DATABASE payment_test;

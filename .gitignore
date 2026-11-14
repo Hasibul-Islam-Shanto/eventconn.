@@ -1,0 +1,120 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnpm-store/
+
+# Production & Build Outputs
+dist/
+build/
+out/
+.next/
+.next-dev/
+
+# TypeScript & Compilers
+*.tsbuildinfo
+next-env.d.ts.bak
+
+# Prisma & Generated Code
+apps/*/generated/
+**/apps/*/generated/
+**/generated/
+
+# Testing & Coverage
+coverage/
+*.lcov
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+cypress/videos/
+cypress/screenshots/
+
+# Environment Variables & Secrets
+.env
+.env.*
+.env*.local
+!.env.example
+!.env.*.example
+!.env.test.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# Logs & Debugging
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Caches & Temporary Files
+.cache/
+.parcel-cache/
+.turbo/
+.eslintcache
+.stylelintcache
+.swc/
+.temp/
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Local Databases & Storage
+.local/
+*.local
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# IDE & Editor Settings
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+*.bak
+
+# Docker Overrides
+docker-compose.override.yml
+docker-compose*.local.yml
+
+# Deployment
+.vercel/
+
+# AI & Agent Binaries and Local Tooling
+.agents/**/bin/
+.gemini/
+.claude/
+.cursor/

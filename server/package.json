@@ -1,0 +1,64 @@
+{
+  "name": "eventconn-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "tsx scripts/dev.ts",
+    "build": "tsx scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "tsx scripts/database.ts generate",
+    "db:migrate": "tsx scripts/database.ts migrate",
+    "db:seed": "tsx scripts/seed.ts",
+    "test": "vitest run",
+    "test:integration": "vitest run tests/integration.test.ts",
+    "test:messaging": "vitest run tests/rabbitmq.test.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.0",
+    "amqplib": "0.10.9",
+    "bcrypt": "6.0.0",
+    "cookie-parser": "1.4.7",
+    "cors": "2.8.5",
+    "dotenv": "17.2.3",
+    "express": "5.1.0",
+    "express-rate-limit": "^8.7.0",
+    "jsonwebtoken": "9.0.2",
+    "nodemailer": "^10.5.0",
+    "pino": "10.1.0",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@types/amqplib": "0.10.7",
+    "@types/bcrypt": "6.0.0",
+    "@types/cookie-parser": "1.4.10",
+    "@types/cors": "2.8.19",
+    "@types/express": "5.0.5",
+    "@types/jsonwebtoken": "9.0.10",
+    "@types/node": "24.10.1",
+    "@types/nodemailer": "^8.0.2",
+    "@types/supertest": "6.0.3",
+    "eslint": "9.39.1",
+    "prettier": "3.6.2",
+    "prisma": "6.19.0",
+    "supertest": "7.1.4",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.4",
+    "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0",
+    "effect": "^3.20.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
