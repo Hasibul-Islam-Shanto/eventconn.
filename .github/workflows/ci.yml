@@ -1,0 +1,153 @@
+name: Pull Request & CI Verification
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  test:
+    name: Lint & Unit/Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      rabbitmq:
+        image: rabbitmq:3-management
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      # Client Verification
+      - name: Install Client Dependencies
+        run: cd client && npm ci
+
+      - name: Lint Client
+        run: cd client && npm run lint
+
+      - name: Typecheck Client
+        run: cd client && npm run typecheck
+
+      - name: Run Client Unit Tests
+        run: cd client && npm test
+
+      # Server Verification & Database Init
+      - name: Initialize PostgreSQL Test Databases
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -d postgres -c "
+            CREATE DATABASE auth_test;
+            CREATE DATABASE event_test;
+            CREATE DATABASE booking_test;
+            CREATE DATABASE notification_test;
+            CREATE DATABASE payment_test;
+          "
+
+      - name: Install Server Dependencies
+        run: cd server && npm ci
+
+      - name: Generate Prisma Clients
+        run: cd server && npm run db:generate
+
+      - name: Lint Server
+        run: cd server && npm run lint
+
+      - name: Typecheck Server
+        run: cd server && npm run typecheck
+
+      - name: Run Server Unit & Integration Tests
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-testing-jwt-secret-at-least-thirty-two-chars
+          INTERNAL_SECRET: ci-testing-internal-secret-at-least-32-chars
+          RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672
+          AUTH_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/auth_test
+          EVENT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/event_test
+          BOOKING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/booking_test
+          NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/notification_test
+          PAYMENT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/payment_test
+        run: cd server && npm test
+
+  security-scan:
+    name: OWASP & Trivy Filesystem Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        continue-on-error: true
+        with:
+          project: 'EventConn'
+          path: '.'
+          format: 'HTML,SARIF'
+          out: 'reports'
+          args: >
+            --enableRetired
+            --scan client/package-lock.json
+            --scan server/package-lock.json
+
+      - name: Upload OWASP SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('reports/dependency-check-report.sarif') != ''
+        with:
+          sarif_file: 'reports/dependency-check-report.sarif'
+          category: 'owasp-dependency-check'
+
+      - name: Run Trivy Repository & IaC Scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy FS SARIF Report
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-fs-results.sarif') != ''
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          category: 'trivy-fs'

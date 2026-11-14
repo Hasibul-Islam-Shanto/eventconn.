@@ -1,0 +1,517 @@
+name: Production CI/CD Pipeline (Docker Hub & AWS OIDC)
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Environment'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+        default: production
+      dry_run:
+        description: 'Dry run deployment (Helm template / diff without applying)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deployment-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write        # Required for AWS OIDC authentication
+  contents: read         # Required to checkout code
+  security-events: write   # Required to upload SARIF security scan results
+  actions: read
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # 1. QUALITY GATE & AUTOMATED TESTING
+  # ----------------------------------------------------------------------------
+  test:
+    name: Test & Quality Gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      rabbitmq:
+        image: rabbitmq:3-management
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      # Client Checks
+      - name: Install Client Dependencies
+        run: cd client && npm ci
+
+      - name: Lint Client
+        run: cd client && npm run lint
+
+      - name: Typecheck Client
+        run: cd client && npm run typecheck
+
+      - name: Run Client Unit Tests
+        run: cd client && npm test
+
+      # Server Checks & DB Initialization
+      - name: Initialize PostgreSQL Test Databases
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -d postgres -c "
+            CREATE DATABASE auth_test;
+            CREATE DATABASE event_test;
+            CREATE DATABASE booking_test;
+            CREATE DATABASE notification_test;
+            CREATE DATABASE payment_test;
+          "
+
+      - name: Install Server Dependencies
+        run: cd server && npm ci
+
+      - name: Generate Prisma Clients
+        run: cd server && npm run db:generate
+
+      - name: Lint Server
+        run: cd server && npm run lint
+
+      - name: Typecheck Server
+        run: cd server && npm run typecheck
+
+      - name: Run Server Unit & Integration Tests
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-testing-jwt-secret-at-least-thirty-two-chars
+          INTERNAL_SECRET: ci-testing-internal-secret-at-least-32-chars
+          RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672
+          AUTH_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/auth_test
+          EVENT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/event_test
+          BOOKING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/booking_test
+          NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/notification_test
+          PAYMENT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/payment_test
+        run: cd server && npm test
+
+  # ----------------------------------------------------------------------------
+  # 2. OWASP DEPENDENCY SECURITY AUDIT
+  # ----------------------------------------------------------------------------
+  owasp-security:
+    name: OWASP Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        continue-on-error: true
+        with:
+          project: 'EventConn'
+          path: '.'
+          format: 'HTML,SARIF'
+          out: 'reports'
+          args: >
+            --enableRetired
+            --scan client/package-lock.json
+            --scan server/package-lock.json
+
+      - name: Upload OWASP SARIF Report to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('reports/dependency-check-report.sarif') != ''
+        with:
+          sarif_file: 'reports/dependency-check-report.sarif'
+          category: 'owasp-dependency-check'
+
+      - name: Upload OWASP HTML Report Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-dependency-check-report
+          path: reports/
+
+      - name: NPM Production Dependencies Audit
+        run: |
+          echo "=== Auditing Client Production Dependencies ==="
+          cd client && npm audit --omit=dev --audit-level=critical || true
+          echo "=== Auditing Server Production Dependencies ==="
+          cd ../server && npm audit --omit=dev --audit-level=critical || true
+
+  # ----------------------------------------------------------------------------
+  # 3. BUILD, TRIVY CONTAINER SCAN & PUSH TO DOCKER HUB
+  # ----------------------------------------------------------------------------
+  build-and-push:
+    name: Build, Scan & Push (${{ matrix.service }})
+    needs: [test, owasp-security]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: frontend
+            context: ./client
+            dockerfile: ./client/Dockerfile
+            image_name: eventconn-frontend
+            build_args: |
+              NEXT_PUBLIC_API_BASE_URL=${{ vars.PROD_API_BASE_URL || 'http://localhost:4000/api' }}
+          - service: api-gateway
+            context: ./server
+            dockerfile: ./server/apps/api-gateway/Dockerfile
+            image_name: eventconn-api-gateway
+          - service: auth-service
+            context: ./server
+            dockerfile: ./server/apps/auth-service/Dockerfile
+            image_name: eventconn-auth-service
+          - service: event-service
+            context: ./server
+            dockerfile: ./server/apps/event-service/Dockerfile
+            image_name: eventconn-event-service
+          - service: booking-service
+            context: ./server
+            dockerfile: ./server/apps/booking-service/Dockerfile
+            image_name: eventconn-booking-service
+          - service: notification-service
+            context: ./server
+            dockerfile: ./server/apps/notification-service/Dockerfile
+            image_name: eventconn-notification-service
+          - service: payment-service
+            context: ./server
+            dockerfile: ./server/apps/payment-service/Dockerfile
+            image_name: eventconn-payment-service
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Define Image Tags
+        id: meta
+        run: |
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image_name }}"
+          ENV_NAME="${{ inputs.environment || 'production' }}"
+          SHA_TAG="${REPO}:${{ github.sha }}"
+          LATEST_TAG="${REPO}:latest"
+          ENV_TAG="${REPO}:${ENV_NAME}"
+
+          echo "repo=${REPO}" >> $GITHUB_OUTPUT
+          echo "tag_sha=${SHA_TAG}" >> $GITHUB_OUTPUT
+          echo "tag_latest=${LATEST_TAG}" >> $GITHUB_OUTPUT
+          echo "tag_env=${ENV_TAG}" >> $GITHUB_OUTPUT
+
+      # Build container image and load it locally for Trivy scanning
+      - name: Build Container Image Locally
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build_args || '' }}
+          tags: ${{ steps.meta.outputs.tag_sha }}
+          load: true
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      # Security Scanning with Trivy
+      - name: Run Trivy Vulnerability Scanner on Image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.tag_sha }}
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF Report to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles(format('trivy-results-{0}.sarif', matrix.service)) != ''
+        with:
+          sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
+          category: 'trivy-${{ matrix.service }}'
+
+      - name: Print Trivy Scan Summary Table
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.tag_sha }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      # Push scanned image with all environment tags to Docker Hub
+      - name: Push Container Images to Docker Hub
+        run: |
+          docker tag "${{ steps.meta.outputs.tag_sha }}" "${{ steps.meta.outputs.tag_latest }}"
+          docker tag "${{ steps.meta.outputs.tag_sha }}" "${{ steps.meta.outputs.tag_env }}"
+          docker push "${{ steps.meta.outputs.tag_sha }}"
+          docker push "${{ steps.meta.outputs.tag_latest }}"
+          docker push "${{ steps.meta.outputs.tag_env }}"
+
+  # ----------------------------------------------------------------------------
+  # 4. HELM & IAC SECURITY SCAN
+  # ----------------------------------------------------------------------------
+  helm-security-scan:
+    name: Helm & IaC Security Scan
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.16.0'
+
+      - name: Verify Helm Dependencies & Lint Charts
+        run: |
+          helm dependency update ./deployment/charts/eventconn
+          helm lint ./deployment/charts/eventconn
+
+      - name: Test Helm Template Rendering
+        run: |
+          helm template eventconn ./deployment/charts/eventconn \
+            -f ./deployment/production/values.yaml > ./rendered-manifests.yaml
+
+      - name: Run Trivy Scan on Helm Manifests & IaC
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'config'
+          scan-ref: './rendered-manifests.yaml'
+          format: 'sarif'
+          output: 'trivy-helm-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Helm Trivy SARIF Report
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-helm-results.sarif') != ''
+        with:
+          sarif_file: 'trivy-helm-results.sarif'
+          category: 'trivy-helm-iac'
+
+  # ----------------------------------------------------------------------------
+  # 5. DEPLOYMENT TO KUBERNETES (AWS OIDC)
+  # ----------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Cluster (${{ inputs.environment || 'production' }})
+    needs: [build-and-push, helm-security-scan]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment || 'production' }}
+      url: ${{ vars.PROD_APP_URL || 'http://eventconn.com' }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # AWS OIDC authentication (Zero long-lived keys)
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          audience: sts.amazonaws.com
+          role-session-name: GHA-EventConn-Deploy
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.16.0'
+
+      - name: Setup Kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.31.0'
+
+      # Configure cluster access via EKS or KUBECONFIG secret
+      - name: Configure Kubernetes Cluster Access
+        run: |
+          if [ -n "${{ vars.EKS_CLUSTER_NAME }}" ]; then
+            echo "Connecting to Amazon EKS cluster: ${{ vars.EKS_CLUSTER_NAME }}..."
+            aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}" --region "${{ vars.AWS_REGION || 'us-east-1' }}"
+          elif [ -n "${{ secrets.KUBECONFIG }}" ]; then
+            echo "Connecting via provided KUBECONFIG secret..."
+            mkdir -p ~/.kube
+            echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+            chmod 600 ~/.kube/config
+          else
+            echo "::error::Neither EKS_CLUSTER_NAME (Variable) nor KUBECONFIG (Secret) is defined."
+            exit 1
+          fi
+
+          kubectl cluster-info
+
+      - name: Ensure Target Namespace Exists
+        run: |
+          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
+          kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+      # Create Docker Hub imagePullSecret to avoid pull rate limits and enable private repos
+      - name: Configure Docker Hub ImagePullSecret in Kubernetes
+        run: |
+          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
+          echo "Configuring dockerhub-secret in namespace: ${NAMESPACE}..."
+          kubectl create secret docker-registry dockerhub-secret \
+            --docker-server=https://index.docker.io/v1/ \
+            --docker-username="${{ secrets.DOCKERHUB_USERNAME }}" \
+            --docker-password="${{ secrets.DOCKERHUB_TOKEN }}" \
+            --namespace="${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # Patch default ServiceAccount to automatically pull using dockerhub-secret
+          kubectl patch serviceaccount default -p '{"imagePullSecrets": [{"name": "dockerhub-secret"}]}' -n "${NAMESPACE}"
+
+      - name: Dry Run Deployment Check
+        if: ${{ inputs.dry_run == true }}
+        run: |
+          DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME }}"
+          IMAGE_TAG="${{ github.sha }}"
+          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
+          VALUES_FILE="deployment/production/values.yaml"
+          if [ "${{ inputs.environment }}" = "staging" ] && [ -f "deployment/environments/staging/values.yaml" ]; then
+            VALUES_FILE="deployment/environments/staging/values.yaml"
+          fi
+
+          echo "Executing Dry Run Helm Deployment with values file: ${VALUES_FILE}..."
+          helm upgrade --install eventconn ./deployment/charts/eventconn \
+            --namespace "${NAMESPACE}" \
+            -f "${VALUES_FILE}" \
+            --set frontend.image.repository="${DOCKER_USER}/eventconn-frontend" \
+            --set frontend.image.tag="${IMAGE_TAG}" \
+            --set frontend.imagePullSecrets[0].name=dockerhub-secret \
+            --set api-gateway.image.repository="${DOCKER_USER}/eventconn-api-gateway" \
+            --set api-gateway.image.tag="${IMAGE_TAG}" \
+            --set api-gateway.imagePullSecrets[0].name=dockerhub-secret \
+            --set auth-service.image.repository="${DOCKER_USER}/eventconn-auth-service" \
+            --set auth-service.image.tag="${IMAGE_TAG}" \
+            --set auth-service.imagePullSecrets[0].name=dockerhub-secret \
+            --set event-service.image.repository="${DOCKER_USER}/eventconn-event-service" \
+            --set event-service.image.tag="${IMAGE_TAG}" \
+            --set event-service.imagePullSecrets[0].name=dockerhub-secret \
+            --set booking-service.image.repository="${DOCKER_USER}/eventconn-booking-service" \
+            --set booking-service.image.tag="${IMAGE_TAG}" \
+            --set booking-service.imagePullSecrets[0].name=dockerhub-secret \
+            --set notification-service.image.repository="${DOCKER_USER}/eventconn-notification-service" \
+            --set notification-service.image.tag="${IMAGE_TAG}" \
+            --set notification-service.imagePullSecrets[0].name=dockerhub-secret \
+            --set payment-service.image.repository="${DOCKER_USER}/eventconn-payment-service" \
+            --set payment-service.image.tag="${IMAGE_TAG}" \
+            --set payment-service.imagePullSecrets[0].name=dockerhub-secret \
+            --dry-run
+
+      - name: Deploy EventConn Stack with Helm
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME }}"
+          IMAGE_TAG="${{ github.sha }}"
+          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
+          VALUES_FILE="deployment/production/values.yaml"
+          if [ "${{ inputs.environment }}" = "staging" ] && [ -f "deployment/environments/staging/values.yaml" ]; then
+            VALUES_FILE="deployment/environments/staging/values.yaml"
+          fi
+
+          echo "Deploying EventConn release to namespace: ${NAMESPACE}"
+          echo "Docker Hub User: ${DOCKER_USER}"
+          echo "Image Tag: ${IMAGE_TAG}"
+
+          helm upgrade --install eventconn ./deployment/charts/eventconn \
+            --namespace "${NAMESPACE}" \
+            -f "${VALUES_FILE}" \
+            --set frontend.image.repository="${DOCKER_USER}/eventconn-frontend" \
+            --set frontend.image.tag="${IMAGE_TAG}" \
+            --set frontend.imagePullSecrets[0].name=dockerhub-secret \
+            --set api-gateway.image.repository="${DOCKER_USER}/eventconn-api-gateway" \
+            --set api-gateway.image.tag="${IMAGE_TAG}" \
+            --set api-gateway.imagePullSecrets[0].name=dockerhub-secret \
+            --set auth-service.image.repository="${DOCKER_USER}/eventconn-auth-service" \
+            --set auth-service.image.tag="${IMAGE_TAG}" \
+            --set auth-service.imagePullSecrets[0].name=dockerhub-secret \
+            --set event-service.image.repository="${DOCKER_USER}/eventconn-event-service" \
+            --set event-service.image.tag="${IMAGE_TAG}" \
+            --set event-service.imagePullSecrets[0].name=dockerhub-secret \
+            --set booking-service.image.repository="${DOCKER_USER}/eventconn-booking-service" \
+            --set booking-service.image.tag="${IMAGE_TAG}" \
+            --set booking-service.imagePullSecrets[0].name=dockerhub-secret \
+            --set notification-service.image.repository="${DOCKER_USER}/eventconn-notification-service" \
+            --set notification-service.image.tag="${IMAGE_TAG}" \
+            --set notification-service.imagePullSecrets[0].name=dockerhub-secret \
+            --set payment-service.image.repository="${DOCKER_USER}/eventconn-payment-service" \
+            --set payment-service.image.tag="${IMAGE_TAG}" \
+            --set payment-service.imagePullSecrets[0].name=dockerhub-secret \
+            ${{ vars.PROD_API_BASE_URL != '' && format('--set frontend.env.NEXT_PUBLIC_API_BASE_URL={0}', vars.PROD_API_BASE_URL) || '' }} \
+            ${{ vars.PROD_CLIENT_ORIGIN != '' && format('--set api-gateway.env.CLIENT_ORIGIN={0}', vars.PROD_CLIENT_ORIGIN) || '' }} \
+            ${{ secrets.PROD_JWT_SECRET != '' && format('--set infrastructure.secrets.jwtSecret={0}', secrets.PROD_JWT_SECRET) || '' }} \
+            ${{ secrets.PROD_INTERNAL_SECRET != '' && format('--set infrastructure.secrets.internalSecret={0}', secrets.PROD_INTERNAL_SECRET) || '' }} \
+            ${{ secrets.PROD_AUTH_DB_URL != '' && format('--set infrastructure.secrets.authDatabaseUrl={0}', secrets.PROD_AUTH_DB_URL) || '' }} \
+            ${{ secrets.PROD_EVENT_DB_URL != '' && format('--set infrastructure.secrets.eventDatabaseUrl={0}', secrets.PROD_EVENT_DB_URL) || '' }} \
+            ${{ secrets.PROD_BOOKING_DB_URL != '' && format('--set infrastructure.secrets.bookingDatabaseUrl={0}', secrets.PROD_BOOKING_DB_URL) || '' }} \
+            ${{ secrets.PROD_NOTIFICATION_DB_URL != '' && format('--set infrastructure.secrets.notificationDatabaseUrl={0}', secrets.PROD_NOTIFICATION_DB_URL) || '' }} \
+            ${{ secrets.PROD_PAYMENT_DB_URL != '' && format('--set infrastructure.secrets.paymentDatabaseUrl={0}', secrets.PROD_PAYMENT_DB_URL) || '' }} \
+            ${{ secrets.PROD_RABBITMQ_URL != '' && format('--set infrastructure.secrets.rabbitmqUrl={0}', secrets.PROD_RABBITMQ_URL) || '' }} \
+            ${{ secrets.PROD_SMTP_USER != '' && format('--set infrastructure.secrets.smtpUser={0}', secrets.PROD_SMTP_USER) || '' }} \
+            ${{ secrets.PROD_SMTP_PASS != '' && format('--set infrastructure.secrets.smtpPass={0}', secrets.PROD_SMTP_PASS) || '' }} \
+            --atomic \
+            --timeout 10m
+
+      - name: Verify Rollout Status
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
+          echo "Verifying deployment rollouts in namespace: ${NAMESPACE}..."
+
+          SERVICES=("frontend" "api-gateway" "auth-service" "event-service" "booking-service" "notification-service" "payment-service")
+          for svc in "${SERVICES[@]}"; do
+            echo "==> Checking rollout status for deployment/${svc}..."
+            kubectl rollout status "deployment/${svc}" -n "${NAMESPACE}" --timeout=180s
+          done
+
+      - name: Deployment Health Summary
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
+          echo "### 🚀 EventConn Deployment (${{ inputs.environment || 'production' }}) Succeeded!" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry:** Docker Hub (\`${{ secrets.DOCKERHUB_USERNAME }}\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Tag:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace:** \`${NAMESPACE}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed Pods:**" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n "${NAMESPACE}" -o wide
