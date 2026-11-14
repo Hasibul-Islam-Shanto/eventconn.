@@ -1,0 +1,78 @@
+# Production Environment Values: frontend (Next.js)
+fullnameOverride: "frontend"
+
+replicaCount: 3
+
+image:
+  repository: "ghcr.io/hasibul-islam-shanto/eventconn-frontend"
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+  hosts:
+    - host: "eventconn.com"
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: "www.eventconn.com"
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: eventconn-frontend-tls
+      hosts:
+        - "eventconn.com"
+        - "www.eventconn.com"
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 20
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 2
+
+env:
+  NODE_ENV: "production"
+  PORT: "3000"
+  NEXT_PUBLIC_API_BASE_URL: "https://api.eventconn.com/api"
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80

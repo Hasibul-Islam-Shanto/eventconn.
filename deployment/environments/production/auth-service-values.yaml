@@ -1,0 +1,84 @@
+# Production Environment Values: auth-service (Node/TypeScript + Prisma + PostgreSQL)
+fullnameOverride: "auth-service"
+
+replicaCount: 2
+
+image:
+  repository: "ghcr.io/hasibul-islam-shanto/eventconn-auth-service"
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0"
+
+service:
+  type: ClusterIP
+  port: 4001
+  targetPort: 4001
+
+ingress:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 600m
+    memory: 512Mi
+  requests:
+    cpu: 150m
+    memory: 256Mi
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 2
+
+env:
+  NODE_ENV: "production"
+  PORT: "4001"
+  LOG_LEVEL: "info"
+
+# Secrets mapped from Kubernetes Secrets (referencing PostgreSQL Docker and shared secrets)
+envFromSecrets:
+  - name: AUTH_DATABASE_URL
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-database-secrets
+        key: auth-database-url
+  - name: JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-shared-secrets
+        key: jwt-secret
+  - name: INTERNAL_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-shared-secrets
+        key: internal-secret
+
+# Automated Prisma Database Migration via Helm Pre-Upgrade Hook Job
+migration:
+  enabled: true
+  command: ["npx", "prisma", "migrate", "deploy", "--schema", "apps/auth-service/prisma/schema.prisma"]
+  backoffLimit: 3
+  resources:
+    limits:
+      cpu: 400m
+      memory: 384Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+autoscaling:
+  enabled: false

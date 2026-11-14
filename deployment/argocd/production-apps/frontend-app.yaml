@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: production-frontend
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: eventconn
+    environment: production
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # ArgoCD Multi-Source Pattern:
+  # Source 1 provides the DRY base Helm chart.
+  # Source 2 (ref: values) allows referencing external values file in environments/production.
+  sources:
+    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+      targetRevision: main
+      path: deployment/charts/base-microservice
+      helm:
+        releaseName: frontend
+        valueFiles:
+          - $values/deployment/environments/production/frontend-values.yaml
+    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

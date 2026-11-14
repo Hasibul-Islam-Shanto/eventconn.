@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "base-microservice.fullname" . }}
+  labels:
+    {{- include "base-microservice.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort | default "http" }}
+      protocol: {{ .Values.service.protocol | default "TCP" }}
+      name: http
+  selector:
+    {{- include "base-microservice.selectorLabels" . | nindent 4 }}

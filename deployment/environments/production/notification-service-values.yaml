@@ -1,0 +1,101 @@
+# Production Environment Values: notification-service (Node/TypeScript + Prisma + PostgreSQL + SMTP)
+fullnameOverride: "notification-service"
+
+replicaCount: 2
+
+image:
+  repository: "ghcr.io/hasibul-islam-shanto/eventconn-notification-service"
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0"
+
+service:
+  type: ClusterIP
+  port: 4004
+  targetPort: 4004
+
+ingress:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 600m
+    memory: 512Mi
+  requests:
+    cpu: 150m
+    memory: 256Mi
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 2
+
+env:
+  NODE_ENV: "production"
+  PORT: "4004"
+  LOG_LEVEL: "info"
+  SMTP_HOST: "smtp.gmail.com"
+  SMTP_PORT: "587"
+  SMTP_SECURE: "false"
+  SMTP_FROM: "EventConn Tickets <no-reply@eventconn.com>"
+
+envFromSecrets:
+  - name: NOTIFICATION_DATABASE_URL
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-database-secrets
+        key: notification-database-url
+  - name: RABBITMQ_URL
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-shared-secrets
+        key: rabbitmq-url
+  - name: JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-shared-secrets
+        key: jwt-secret
+  - name: INTERNAL_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-shared-secrets
+        key: internal-secret
+  - name: SMTP_USER
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-smtp-secrets
+        key: smtp-user
+  - name: SMTP_PASS
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-smtp-secrets
+        key: smtp-pass
+
+migration:
+  enabled: true
+  command: ["npx", "prisma", "migrate", "deploy", "--schema", "apps/notification-service/prisma/schema.prisma"]
+  backoffLimit: 3
+  resources:
+    limits:
+      cpu: 400m
+      memory: 384Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+autoscaling:
+  enabled: false

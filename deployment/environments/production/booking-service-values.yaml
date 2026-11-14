@@ -1,0 +1,88 @@
+# Production Environment Values: booking-service (Node/TypeScript + Prisma + PostgreSQL)
+fullnameOverride: "booking-service"
+
+replicaCount: 2
+
+image:
+  repository: "ghcr.io/hasibul-islam-shanto/eventconn-booking-service"
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0"
+
+service:
+  type: ClusterIP
+  port: 4003
+  targetPort: 4003
+
+ingress:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 800m
+    memory: 768Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 2
+
+env:
+  NODE_ENV: "production"
+  PORT: "4003"
+  LOG_LEVEL: "info"
+  HOLD_MINUTES: "10"
+
+envFromSecrets:
+  - name: BOOKING_DATABASE_URL
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-database-secrets
+        key: booking-database-url
+  - name: RABBITMQ_URL
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-shared-secrets
+        key: rabbitmq-url
+  - name: JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-shared-secrets
+        key: jwt-secret
+  - name: INTERNAL_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: eventconn-shared-secrets
+        key: internal-secret
+
+migration:
+  enabled: true
+  command: ["npx", "prisma", "migrate", "deploy", "--schema", "apps/booking-service/prisma/schema.prisma"]
+  backoffLimit: 3
+  resources:
+    limits:
+      cpu: 400m
+      memory: 384Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+autoscaling:
+  enabled: false

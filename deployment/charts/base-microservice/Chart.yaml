@@ -1,0 +1,9 @@
+apiVersion: v2
+name: base-microservice
+description: Production-grade base Helm chart for EventConn microservices and frontend
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Platform Architecture Team
+    email: devops@eventconn.com
