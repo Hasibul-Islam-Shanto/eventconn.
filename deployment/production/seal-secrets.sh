@@ -29,7 +29,21 @@ echo " Input:  ${INPUT_FILE}"
 echo " Output: ${OUTPUT_FILE}"
 echo "=========================================================="
 
-kubeseal --format=yaml < "${INPUT_FILE}" > "${OUTPUT_FILE}"
+# Auto-detect or specify the Sealed Secrets controller
+CONTROLLER_NS="${SEALED_SECRETS_NS:-kube-system}"
+CONTROLLER_NAME="${SEALED_SECRETS_NAME:-sealed-secrets-controller}"
+
+# Check if a public certificate file exists locally (offline mode)
+if [ -f "cert.pem" ]; then
+  echo "Using local encryption certificate: cert.pem"
+  kubeseal --cert cert.pem --format=yaml < "${INPUT_FILE}" > "${OUTPUT_FILE}"
+else
+  echo "Fetching encryption certificate from cluster (${CONTROLLER_NS}/${CONTROLLER_NAME})..."
+  kubeseal \
+    --controller-namespace "${CONTROLLER_NS}" \
+    --controller-name "${CONTROLLER_NAME}" \
+    --format=yaml < "${INPUT_FILE}" > "${OUTPUT_FILE}"
+fi
 
 echo ""
 echo "✅ Secrets encrypted successfully into '${OUTPUT_FILE}'!"

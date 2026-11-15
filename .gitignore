@@ -47,6 +47,9 @@ cypress/screenshots/
 *.key
 *.cert
 *.crt
+deployment/production/secrets.yaml
+deployment/**/secrets.yaml
+!*.example.yaml
 
 # Logs & Debugging
 logs/
