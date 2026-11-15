@@ -77,6 +77,9 @@ echo "--> [5/6] Installing ArgoCD..."
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
+# Expose ArgoCD via NodePort so it can be accessed directly using EC2 Public IP
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort", "ports": [{"name": "http", "port": 80, "targetPort": 8080, "nodePort": 30081}, {"name": "https", "port": 443, "targetPort": 8080, "nodePort": 30080}]}}'
+
 echo "Waiting for ArgoCD server pod to become ready..."
 kubectl wait --namespace argocd \
   --for=condition=ready pod \
@@ -100,15 +103,16 @@ echo ""
 echo "=========================================================="
 echo "         EC2 GitOps Setup Completed Successfully!         "
 echo "=========================================================="
-echo "ArgoCD UI Access:"
-echo "  • Access via Port-Forward: kubectl port-forward svc/argocd-server -n argocd 8080:443"
-echo "  • URL:      https://localhost:8080 (or expose via Ingress / NodePort)"
-echo "  • Username: admin"
-echo "  • Password: ${ARGOCD_PW}"
+echo "ArgoCD Direct Browser Access:"
+echo "  • Direct URL:  https://${PUBLIC_IP}:30080"
+echo "  • Username:    admin"
+echo "  • Password:    ${ARGOCD_PW}"
+echo ""
+echo "  (Make sure EC2 Security Group allows Inbound TCP on port 30080)"
 echo ""
 echo "Sealed Secrets:"
-echo "  • Controller: Active in kube-system namespace"
-echo "  • kubeseal CLI: Installed at /usr/local/bin/kubeseal"
+echo "  • Controller:  Active in kube-system namespace"
+echo "  • kubeseal:    Installed at /usr/local/bin/kubeseal"
 echo ""
 echo "GitOps Deployment is now LIVE! ArgoCD will automatically"
 echo "sync changes pushed to the 'main' branch in GitHub."

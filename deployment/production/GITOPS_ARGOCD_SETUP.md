@@ -64,8 +64,14 @@ Because ArgoCD and Sealed Secrets handle deployment and passwords, your GitHub s
 
 *(No other secrets are needed!)*
 
-### 🌐 Repository Variables (`Variables`)
-*No mandatory repository variables are needed.*
+| Port | Protocol | Source | Purpose |
+| :--- | :---: | :--- | :--- |
+| `22` | TCP | Your IP | Secure SSH access |
+| `30080`| TCP | `0.0.0.0/0` | ArgoCD Web UI (HTTPS) |
+| `3000` | TCP | `0.0.0.0/0` | Frontend Web UI |
+| `4000` | TCP | `0.0.0.0/0` | API Gateway |
+| `80` | TCP | `0.0.0.0/0` | HTTP traffic (Ingress) |
+| `443` | TCP | `0.0.0.0/0` | HTTPS traffic (Ingress / SSL) |
 
 ---
 
