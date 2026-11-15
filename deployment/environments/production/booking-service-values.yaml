@@ -1,7 +1,7 @@
 # Production Environment Values: booking-service (Node/TypeScript + Prisma + PostgreSQL)
 fullnameOverride: "booking-service"
 
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: "shanto78/eventconn-booking-service"
@@ -18,11 +18,11 @@ ingress:
 
 resources:
   limits:
-    cpu: 800m
-    memory: 768Mi
+    cpu: 500m
+    memory: 512Mi
   requests:
-    cpu: 200m
-    memory: 256Mi
+    cpu: 50m
+    memory: 128Mi
 
 livenessProbe:
   enabled: true

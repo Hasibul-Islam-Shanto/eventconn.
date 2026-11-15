@@ -1,7 +1,7 @@
 # Production Environment Values: notification-service (Node/TypeScript + Prisma + PostgreSQL + SMTP)
 fullnameOverride: "notification-service"
 
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: "shanto78/eventconn-notification-service"
@@ -18,11 +18,11 @@ ingress:
 
 resources:
   limits:
-    cpu: 600m
+    cpu: 500m
     memory: 512Mi
   requests:
-    cpu: 150m
-    memory: 256Mi
+    cpu: 50m
+    memory: 128Mi
 
 livenessProbe:
   enabled: true

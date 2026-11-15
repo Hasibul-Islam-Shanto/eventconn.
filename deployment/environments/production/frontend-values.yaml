@@ -1,7 +1,7 @@
 # Production Environment Values: frontend (Next.js)
 fullnameOverride: "frontend"
 
-replicaCount: 3
+replicaCount: 1
 
 image:
   repository: "shanto78/eventconn-frontend"
@@ -9,19 +9,24 @@ image:
   tag: "edf26a8176e7d26da79d5685fda7ab3e87afb7a1"
 
 service:
-  type: ClusterIP
-  port: 80
+  type: NodePort
+  port: 3000
   targetPort: 3000
+  nodePort: 30000
 
 ingress:
   enabled: true
-  className: "nginx"
+  className: ""
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
   hosts:
+    - host: "34.228.227.204"
+      paths:
+        - path: /
+          pathType: Prefix
     - host: "eventconn.com"
       paths:
         - path: /
@@ -34,11 +39,11 @@ ingress:
 
 resources:
   limits:
-    cpu: 1000m
-    memory: 1Gi
+    cpu: 600m
+    memory: 512Mi
   requests:
-    cpu: 250m
-    memory: 256Mi
+    cpu: 100m
+    memory: 128Mi
 
 livenessProbe:
   enabled: true
@@ -64,11 +69,7 @@ env:
   NODE_ENV: "production"
   PORT: "3000"
   # Set to your EC2 public IP or domain:
-  NEXT_PUBLIC_API_BASE_URL: "http://<YOUR_EC2_IP>:4000/api"
+  NEXT_PUBLIC_API_BASE_URL: "http://34.228.227.204:30001/api"
 
 autoscaling:
-  enabled: true
-  minReplicas: 3
-  maxReplicas: 8
-  targetCPUUtilizationPercentage: 75
-  targetMemoryUtilizationPercentage: 80
+  enabled: false
