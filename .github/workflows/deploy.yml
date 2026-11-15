@@ -1,4 +1,4 @@
-name: Production CI/CD Pipeline (Docker Hub & AWS OIDC)
+name: Production CI/CD Pipeline (GitOps with ArgoCD & Docker Hub)
 
 on:
   push:
@@ -7,29 +7,14 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Target Environment'
-        required: true
-        type: choice
-        options:
-          - production
-          - staging
-        default: production
-      dry_run:
-        description: 'Dry run deployment (Helm template / diff without applying)'
-        required: false
-        type: boolean
-        default: false
 
 concurrency:
-  group: deployment-${{ github.ref }}
+  group: gitops-deploy-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
-  id-token: write        # Required for AWS OIDC authentication
-  contents: read         # Required to checkout code
-  security-events: write   # Required to upload SARIF security scan results
+  contents: write        # Required to commit updated image tags to Git repository
+  security-events: write # Required to upload SARIF security scan results
   actions: read
 
 jobs:
@@ -187,8 +172,6 @@ jobs:
             context: ./client
             dockerfile: ./client/Dockerfile
             image_name: eventconn-frontend
-            build_args: |
-              NEXT_PUBLIC_API_BASE_URL=${{ vars.PROD_API_BASE_URL || 'http://localhost:4000/api' }}
           - service: api-gateway
             context: ./server
             dockerfile: ./server/apps/api-gateway/Dockerfile
@@ -231,15 +214,12 @@ jobs:
         id: meta
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image_name }}"
-          ENV_NAME="${{ inputs.environment || 'production' }}"
           SHA_TAG="${REPO}:${{ github.sha }}"
           LATEST_TAG="${REPO}:latest"
-          ENV_TAG="${REPO}:${ENV_NAME}"
 
           echo "repo=${REPO}" >> $GITHUB_OUTPUT
           echo "tag_sha=${SHA_TAG}" >> $GITHUB_OUTPUT
           echo "tag_latest=${LATEST_TAG}" >> $GITHUB_OUTPUT
-          echo "tag_env=${ENV_TAG}" >> $GITHUB_OUTPUT
 
       # Build container image and load it locally for Trivy scanning
       - name: Build Container Image Locally
@@ -247,7 +227,6 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          build-args: ${{ matrix.build_args || '' }}
           tags: ${{ steps.meta.outputs.tag_sha }}
           load: true
           cache-from: type=gha,scope=${{ matrix.service }}
@@ -278,240 +257,74 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
 
-      # Push scanned image with all environment tags to Docker Hub
+      # Push scanned image to Docker Hub
       - name: Push Container Images to Docker Hub
         run: |
           docker tag "${{ steps.meta.outputs.tag_sha }}" "${{ steps.meta.outputs.tag_latest }}"
-          docker tag "${{ steps.meta.outputs.tag_sha }}" "${{ steps.meta.outputs.tag_env }}"
           docker push "${{ steps.meta.outputs.tag_sha }}"
           docker push "${{ steps.meta.outputs.tag_latest }}"
-          docker push "${{ steps.meta.outputs.tag_env }}"
 
   # ----------------------------------------------------------------------------
-  # 4. HELM & IAC SECURITY SCAN
+  # 4. GITOPS PROMOTION (Update Git Manifests for ArgoCD)
   # ----------------------------------------------------------------------------
-  helm-security-scan:
-    name: Helm & IaC Security Scan
-    needs: [test]
+  gitops-promote:
+    name: GitOps Promotion (ArgoCD)
+    needs: [build-and-push]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository with Write Permission
         uses: actions/checkout@v4
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
         with:
-          version: 'v3.16.0'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
 
-      - name: Verify Helm Dependencies & Lint Charts
-        run: |
-          helm dependency update ./deployment/charts/eventconn
-          helm lint ./deployment/charts/eventconn
-
-      - name: Test Helm Template Rendering
-        run: |
-          helm template eventconn ./deployment/charts/eventconn \
-            -f ./deployment/production/values.yaml > ./rendered-manifests.yaml
-
-      - name: Run Trivy Scan on Helm Manifests & IaC
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: 'config'
-          scan-ref: './rendered-manifests.yaml'
-          format: 'sarif'
-          output: 'trivy-helm-results.sarif'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Upload Helm Trivy SARIF Report
-        uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy-helm-results.sarif') != ''
-        with:
-          sarif_file: 'trivy-helm-results.sarif'
-          category: 'trivy-helm-iac'
-
-  # ----------------------------------------------------------------------------
-  # 5. DEPLOYMENT TO KUBERNETES (AWS OIDC)
-  # ----------------------------------------------------------------------------
-  deploy:
-    name: Deploy to Cluster (${{ inputs.environment || 'production' }})
-    needs: [build-and-push, helm-security-scan]
-    runs-on: ubuntu-latest
-    environment:
-      name: ${{ inputs.environment || 'production' }}
-      url: ${{ vars.PROD_APP_URL || 'http://eventconn.com' }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      # AWS OIDC authentication (Zero long-lived keys)
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-          audience: sts.amazonaws.com
-          role-session-name: GHA-EventConn-Deploy
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: 'v3.16.0'
-
-      - name: Setup Kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: 'v1.31.0'
-
-      # Configure cluster access via EKS or KUBECONFIG secret
-      - name: Configure Kubernetes Cluster Access
-        run: |
-          if [ -n "${{ vars.EKS_CLUSTER_NAME }}" ]; then
-            echo "Connecting to Amazon EKS cluster: ${{ vars.EKS_CLUSTER_NAME }}..."
-            aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}" --region "${{ vars.AWS_REGION || 'us-east-1' }}"
-          elif [ -n "${{ secrets.KUBECONFIG }}" ]; then
-            echo "Connecting via provided KUBECONFIG secret..."
-            mkdir -p ~/.kube
-            echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
-            chmod 600 ~/.kube/config
-          else
-            echo "::error::Neither EKS_CLUSTER_NAME (Variable) nor KUBECONFIG (Secret) is defined."
-            exit 1
-          fi
-
-          kubectl cluster-info
-
-      - name: Ensure Target Namespace Exists
-        run: |
-          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
-          kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-
-      # Create Docker Hub imagePullSecret to avoid pull rate limits and enable private repos
-      - name: Configure Docker Hub ImagePullSecret in Kubernetes
-        run: |
-          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
-          echo "Configuring dockerhub-secret in namespace: ${NAMESPACE}..."
-          kubectl create secret docker-registry dockerhub-secret \
-            --docker-server=https://index.docker.io/v1/ \
-            --docker-username="${{ secrets.DOCKERHUB_USERNAME }}" \
-            --docker-password="${{ secrets.DOCKERHUB_TOKEN }}" \
-            --namespace="${NAMESPACE}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-          # Patch default ServiceAccount to automatically pull using dockerhub-secret
-          kubectl patch serviceaccount default -p '{"imagePullSecrets": [{"name": "dockerhub-secret"}]}' -n "${NAMESPACE}"
-
-      - name: Dry Run Deployment Check
-        if: ${{ inputs.dry_run == true }}
+      - name: Update Production Values with New Docker Hub Tags
         run: |
           DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME }}"
-          IMAGE_TAG="${{ github.sha }}"
-          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
-          VALUES_FILE="deployment/production/values.yaml"
-          if [ "${{ inputs.environment }}" = "staging" ] && [ -f "deployment/environments/staging/values.yaml" ]; then
-            VALUES_FILE="deployment/environments/staging/values.yaml"
-          fi
+          NEW_TAG="${{ github.sha }}"
 
-          echo "Executing Dry Run Helm Deployment with values file: ${VALUES_FILE}..."
-          helm upgrade --install eventconn ./deployment/charts/eventconn \
-            --namespace "${NAMESPACE}" \
-            -f "${VALUES_FILE}" \
-            --set frontend.image.repository="${DOCKER_USER}/eventconn-frontend" \
-            --set frontend.image.tag="${IMAGE_TAG}" \
-            --set frontend.imagePullSecrets[0].name=dockerhub-secret \
-            --set api-gateway.image.repository="${DOCKER_USER}/eventconn-api-gateway" \
-            --set api-gateway.image.tag="${IMAGE_TAG}" \
-            --set api-gateway.imagePullSecrets[0].name=dockerhub-secret \
-            --set auth-service.image.repository="${DOCKER_USER}/eventconn-auth-service" \
-            --set auth-service.image.tag="${IMAGE_TAG}" \
-            --set auth-service.imagePullSecrets[0].name=dockerhub-secret \
-            --set event-service.image.repository="${DOCKER_USER}/eventconn-event-service" \
-            --set event-service.image.tag="${IMAGE_TAG}" \
-            --set event-service.imagePullSecrets[0].name=dockerhub-secret \
-            --set booking-service.image.repository="${DOCKER_USER}/eventconn-booking-service" \
-            --set booking-service.image.tag="${IMAGE_TAG}" \
-            --set booking-service.imagePullSecrets[0].name=dockerhub-secret \
-            --set notification-service.image.repository="${DOCKER_USER}/eventconn-notification-service" \
-            --set notification-service.image.tag="${IMAGE_TAG}" \
-            --set notification-service.imagePullSecrets[0].name=dockerhub-secret \
-            --set payment-service.image.repository="${DOCKER_USER}/eventconn-payment-service" \
-            --set payment-service.image.tag="${IMAGE_TAG}" \
-            --set payment-service.imagePullSecrets[0].name=dockerhub-secret \
-            --dry-run
+          echo "Updating GitOps values files to image tag: ${NEW_TAG} for user: ${DOCKER_USER}..."
 
-      - name: Deploy EventConn Stack with Helm
-        if: ${{ inputs.dry_run != true }}
-        run: |
-          DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME }}"
-          IMAGE_TAG="${{ github.sha }}"
-          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
-          VALUES_FILE="deployment/production/values.yaml"
-          if [ "${{ inputs.environment }}" = "staging" ] && [ -f "deployment/environments/staging/values.yaml" ]; then
-            VALUES_FILE="deployment/environments/staging/values.yaml"
-          fi
-
-          echo "Deploying EventConn release to namespace: ${NAMESPACE}"
-          echo "Docker Hub User: ${DOCKER_USER}"
-          echo "Image Tag: ${IMAGE_TAG}"
-
-          helm upgrade --install eventconn ./deployment/charts/eventconn \
-            --namespace "${NAMESPACE}" \
-            -f "${VALUES_FILE}" \
-            --set frontend.image.repository="${DOCKER_USER}/eventconn-frontend" \
-            --set frontend.image.tag="${IMAGE_TAG}" \
-            --set frontend.imagePullSecrets[0].name=dockerhub-secret \
-            --set api-gateway.image.repository="${DOCKER_USER}/eventconn-api-gateway" \
-            --set api-gateway.image.tag="${IMAGE_TAG}" \
-            --set api-gateway.imagePullSecrets[0].name=dockerhub-secret \
-            --set auth-service.image.repository="${DOCKER_USER}/eventconn-auth-service" \
-            --set auth-service.image.tag="${IMAGE_TAG}" \
-            --set auth-service.imagePullSecrets[0].name=dockerhub-secret \
-            --set event-service.image.repository="${DOCKER_USER}/eventconn-event-service" \
-            --set event-service.image.tag="${IMAGE_TAG}" \
-            --set event-service.imagePullSecrets[0].name=dockerhub-secret \
-            --set booking-service.image.repository="${DOCKER_USER}/eventconn-booking-service" \
-            --set booking-service.image.tag="${IMAGE_TAG}" \
-            --set booking-service.imagePullSecrets[0].name=dockerhub-secret \
-            --set notification-service.image.repository="${DOCKER_USER}/eventconn-notification-service" \
-            --set notification-service.image.tag="${IMAGE_TAG}" \
-            --set notification-service.imagePullSecrets[0].name=dockerhub-secret \
-            --set payment-service.image.repository="${DOCKER_USER}/eventconn-payment-service" \
-            --set payment-service.image.tag="${IMAGE_TAG}" \
-            --set payment-service.imagePullSecrets[0].name=dockerhub-secret \
-            ${{ vars.PROD_API_BASE_URL != '' && format('--set frontend.env.NEXT_PUBLIC_API_BASE_URL={0}', vars.PROD_API_BASE_URL) || '' }} \
-            ${{ vars.PROD_CLIENT_ORIGIN != '' && format('--set api-gateway.env.CLIENT_ORIGIN={0}', vars.PROD_CLIENT_ORIGIN) || '' }} \
-            ${{ secrets.PROD_JWT_SECRET != '' && format('--set infrastructure.secrets.jwtSecret={0}', secrets.PROD_JWT_SECRET) || '' }} \
-            ${{ secrets.PROD_INTERNAL_SECRET != '' && format('--set infrastructure.secrets.internalSecret={0}', secrets.PROD_INTERNAL_SECRET) || '' }} \
-            ${{ secrets.PROD_AUTH_DB_URL != '' && format('--set infrastructure.secrets.authDatabaseUrl={0}', secrets.PROD_AUTH_DB_URL) || '' }} \
-            ${{ secrets.PROD_EVENT_DB_URL != '' && format('--set infrastructure.secrets.eventDatabaseUrl={0}', secrets.PROD_EVENT_DB_URL) || '' }} \
-            ${{ secrets.PROD_BOOKING_DB_URL != '' && format('--set infrastructure.secrets.bookingDatabaseUrl={0}', secrets.PROD_BOOKING_DB_URL) || '' }} \
-            ${{ secrets.PROD_NOTIFICATION_DB_URL != '' && format('--set infrastructure.secrets.notificationDatabaseUrl={0}', secrets.PROD_NOTIFICATION_DB_URL) || '' }} \
-            ${{ secrets.PROD_PAYMENT_DB_URL != '' && format('--set infrastructure.secrets.paymentDatabaseUrl={0}', secrets.PROD_PAYMENT_DB_URL) || '' }} \
-            ${{ secrets.PROD_RABBITMQ_URL != '' && format('--set infrastructure.secrets.rabbitmqUrl={0}', secrets.PROD_RABBITMQ_URL) || '' }} \
-            ${{ secrets.PROD_SMTP_USER != '' && format('--set infrastructure.secrets.smtpUser={0}', secrets.PROD_SMTP_USER) || '' }} \
-            ${{ secrets.PROD_SMTP_PASS != '' && format('--set infrastructure.secrets.smtpPass={0}', secrets.PROD_SMTP_PASS) || '' }} \
-            --atomic \
-            --timeout 10m
-
-      - name: Verify Rollout Status
-        if: ${{ inputs.dry_run != true }}
-        run: |
-          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
-          echo "Verifying deployment rollouts in namespace: ${NAMESPACE}..."
-
+          # 1. Update individual microservice values files used by ArgoCD
           SERVICES=("frontend" "api-gateway" "auth-service" "event-service" "booking-service" "notification-service" "payment-service")
           for svc in "${SERVICES[@]}"; do
-            echo "==> Checking rollout status for deployment/${svc}..."
-            kubectl rollout status "deployment/${svc}" -n "${NAMESPACE}" --timeout=180s
+            FILE="deployment/environments/production/${svc}-values.yaml"
+            if [ -f "${FILE}" ]; then
+              sed -i -E "s|repository: .*|repository: \"${DOCKER_USER}/eventconn-${svc}\"|g" "${FILE}"
+              sed -i -E "s|tag: .*|tag: \"${NEW_TAG}\"|g" "${FILE}"
+              echo "Updated ${FILE}"
+            fi
           done
 
-      - name: Deployment Health Summary
-        if: ${{ inputs.dry_run != true }}
+          # 2. Update umbrella production values file
+          VALUES_FILE="deployment/production/values.yaml"
+          if [ -f "${VALUES_FILE}" ]; then
+            for svc in "${SERVICES[@]}"; do
+              sed -i -E "s|repository: \".*eventconn-${svc}\"|repository: \"${DOCKER_USER}/eventconn-${svc}\"|g" "${VALUES_FILE}"
+            done
+            sed -i -E "s|tag: \"v[0-9]+\.[0-9]+\.[0-9]+\"|tag: \"${NEW_TAG}\"|g" "${VALUES_FILE}"
+            echo "Updated ${VALUES_FILE}"
+          fi
+
+      - name: Commit and Push Image Tag Changes
         run: |
-          NAMESPACE="${{ vars.KUBE_NAMESPACE || 'production' }}"
-          echo "### 🚀 EventConn Deployment (${{ inputs.environment || 'production' }}) Succeeded!" >> $GITHUB_STEP_SUMMARY
-          echo "- **Registry:** Docker Hub (\`${{ secrets.DOCKERHUB_USERNAME }}\`)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image Tag:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Namespace:** \`${NAMESPACE}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployed Pods:**" >> $GITHUB_STEP_SUMMARY
-          kubectl get pods -n "${NAMESPACE}" -o wide
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add deployment/environments/production/*-values.yaml deployment/production/values.yaml
+
+          if git diff --staged --quiet; then
+            echo "No changes in values files to commit."
+          else
+            git commit -m "chore(gitops): update production image tags to ${{ github.sha }} [skip ci]"
+            git push origin main
+            echo "GitOps commit pushed to main! ArgoCD will now sync the cluster automatically."
+          fi
+
+      - name: GitOps Deployment Summary
+        run: |
+          echo "### 🚀 GitOps Promotion Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker Hub User:** \`${{ secrets.DOCKERHUB_USERNAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed Commit SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** Updated \`deployment/environments/production/*-values.yaml\`." >> $GITHUB_STEP_SUMMARY
+          echo "- **ArgoCD:** ArgoCD running in your EC2 cluster will automatically detect this commit and roll out the new images with zero downtime." >> $GITHUB_STEP_SUMMARY

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# EventConn EC2 Node Provisioning Script (Ubuntu 22.04 / 24.04 LTS)
-# Installs: Docker, k3s (Kubernetes), Helm 3, and configures Kubeconfig for CI/CD
+# EventConn EC2 Node Provisioning Script (GitOps with ArgoCD & Sealed Secrets)
+# Installs: k3s (Kubernetes), Helm 3, Bitnami Sealed Secrets, and ArgoCD
 # ==============================================================================
 set -euo pipefail
 
 echo "=========================================================="
-echo "    Provisioning AWS EC2 for EventConn Deployment         "
+echo "    Provisioning AWS EC2 for EventConn GitOps Stack       "
 echo "=========================================================="
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -23,7 +23,7 @@ fi
 echo "EC2 Public IP: ${PUBLIC_IP}"
 
 # 1. Update system packages
-echo "--> [1/5] Updating system packages..."
+echo "--> [1/6] Updating system packages..."
 apt-get update -y
 apt-get install -y --no-install-recommends \
   curl \
@@ -36,17 +36,16 @@ apt-get install -y --no-install-recommends \
   jq
 
 # 2. Install Helm 3
-echo "--> [2/5] Installing Helm 3..."
+echo "--> [2/6] Installing Helm 3..."
 if ! command -v helm &>/dev/null; then
   curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 else
   echo "Helm is already installed: $(helm version --short)"
 fi
 
-# 3. Install k3s (Lightweight Kubernetes) with TLS SAN for remote API access
-echo "--> [3/5] Installing k3s..."
+# 3. Install k3s (Lightweight Kubernetes)
+echo "--> [3/6] Installing k3s..."
 if ! command -v k3s &>/dev/null; then
-  # Install k3s with the public IP added to the API TLS certificate
   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--tls-san ${PUBLIC_IP} --write-kubeconfig-mode 644" sh -
 else
   echo "k3s is already installed."
@@ -59,28 +58,58 @@ until kubectl get nodes | grep -q "Ready"; do
 done
 kubectl get nodes
 
-# 4. Prepare Kubeconfig for GitHub Actions
-echo "--> [4/5] Generating GitHub Actions KUBECONFIG..."
-K3S_CONFIG="/etc/rancher/k3s/k3s.yaml"
-OUTPUT_CONFIG="/home/ubuntu/kubeconfig.yaml"
+# 4. Install Bitnami Sealed Secrets Controller & kubeseal CLI
+echo "--> [4/6] Installing Bitnami Sealed Secrets Controller..."
+SEALED_SECRETS_VERSION="v0.27.3"
+kubectl apply -f "https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/controller.yaml"
 
-# Replace 127.0.0.1 with the EC2 Public IP
-sed "s/127.0.0.1/${PUBLIC_IP}/g" "${K3S_CONFIG}" > "${OUTPUT_CONFIG}"
-chmod 600 "${OUTPUT_CONFIG}"
-chown ubuntu:ubuntu "${OUTPUT_CONFIG}"
+if ! command -v kubeseal &>/dev/null; then
+  echo "Installing kubeseal CLI..."
+  ARCH=$(dpkg --print-architecture)
+  wget "https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/kubeseal-${SEALED_SECRETS_VERSION#v}-linux-${ARCH}.tar.gz" -O /tmp/kubeseal.tar.gz
+  tar -xvzf /tmp/kubeseal.tar.gz -C /usr/local/bin kubeseal
+  rm -f /tmp/kubeseal.tar.gz
+  chmod +x /usr/local/bin/kubeseal
+fi
 
-echo "--> [5/5] Creating production namespace..."
-kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
+# 5. Install ArgoCD
+echo "--> [5/6] Installing ArgoCD..."
+kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+echo "Waiting for ArgoCD server pod to become ready..."
+kubectl wait --namespace argocd \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/name=argocd-server \
+  --timeout=240s || true
+
+# 6. Bootstrap ArgoCD App-of-Apps
+echo "--> [6/6] Bootstrapping ArgoCD Production App..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+if [ -f "${ROOT_DIR}/deployment/argocd/bootstrap/app-of-apps.yaml" ]; then
+  kubectl apply -f "${ROOT_DIR}/deployment/argocd/bootstrap/app-of-apps.yaml"
+  echo "ArgoCD App-of-Apps applied."
+fi
+
+# Fetch initial ArgoCD password
+ARGOCD_PW=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "See secret: argocd-initial-admin-secret")
 
 echo ""
 echo "=========================================================="
-echo "         EC2 Setup Completed Successfully!                "
+echo "         EC2 GitOps Setup Completed Successfully!         "
 echo "=========================================================="
+echo "ArgoCD UI Access:"
+echo "  • Access via Port-Forward: kubectl port-forward svc/argocd-server -n argocd 8080:443"
+echo "  • URL:      https://localhost:8080 (or expose via Ingress / NodePort)"
+echo "  • Username: admin"
+echo "  • Password: ${ARGOCD_PW}"
 echo ""
-echo "Next step for GitHub Actions CI/CD:"
-echo "1. Run this command on EC2 to copy your Kubeconfig:"
+echo "Sealed Secrets:"
+echo "  • Controller: Active in kube-system namespace"
+echo "  • kubeseal CLI: Installed at /usr/local/bin/kubeseal"
 echo ""
-echo "   cat /home/ubuntu/kubeconfig.yaml"
-echo ""
-echo "2. Add the entire output as the GitHub Secret: KUBECONFIG"
+echo "GitOps Deployment is now LIVE! ArgoCD will automatically"
+echo "sync changes pushed to the 'main' branch in GitHub."
 echo "=========================================================="
