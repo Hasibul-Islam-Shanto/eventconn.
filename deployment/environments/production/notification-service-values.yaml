@@ -6,7 +6,7 @@ replicaCount: 1
 image:
   repository: "shanto78/eventconn-notification-service"
   pullPolicy: IfNotPresent
-  tag: "edf26a8176e7d26da79d5685fda7ab3e87afb7a1"
+  tag: "6ce0309468a55782f3318e5abe3c6e558d5cc063"
 
 service:
   type: ClusterIP
