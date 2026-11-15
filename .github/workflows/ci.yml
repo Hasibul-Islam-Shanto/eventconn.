@@ -76,19 +76,24 @@ jobs:
       # Server Verification & Database Init
       - name: Initialize PostgreSQL Test Databases
         run: |
-          docker exec ${{ job.services.postgres.id }} psql -U postgres -d postgres -c "
-            CREATE DATABASE auth_test;
-            CREATE DATABASE event_test;
-            CREATE DATABASE booking_test;
-            CREATE DATABASE notification_test;
-            CREATE DATABASE payment_test;
-          "
+          for db in auth_test event_test booking_test notification_test payment_test; do
+            docker exec ${{ job.services.postgres.id }} psql -U postgres -d postgres -c "CREATE DATABASE $db;"
+          done
 
       - name: Install Server Dependencies
         run: cd server && npm ci
 
       - name: Generate Prisma Clients
         run: cd server && npm run db:generate
+
+      - name: Migrate Test Databases
+        env:
+          AUTH_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/auth_test
+          EVENT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/event_test
+          BOOKING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/booking_test
+          NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/notification_test
+          PAYMENT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/payment_test
+        run: cd server && npm run db:migrate
 
       - name: Lint Server
         run: cd server && npm run lint
