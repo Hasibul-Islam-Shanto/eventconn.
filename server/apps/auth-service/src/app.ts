@@ -14,7 +14,7 @@ import { registerSchema, loginSchema } from "./modules/auth/auth.validation.js";
 export function createAuthApp(
   db: PrismaClient,
   secret: string,
-  production = false,
+  _production = false,
   internalSecret = "default-internal-secret",
 ) {
   const app = baseApp("auth-service");
