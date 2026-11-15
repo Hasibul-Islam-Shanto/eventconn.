@@ -15,14 +15,14 @@ spec:
   # Source 1 provides the DRY base Helm chart.
   # Source 2 (ref: values) allows referencing external values file in environments/production.
   sources:
-    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn..git
       targetRevision: main
       path: deployment/charts/base-microservice
       helm:
         releaseName: frontend
         valueFiles:
           - $values/deployment/environments/production/frontend-values.yaml
-    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn..git
       targetRevision: main
       ref: values
   destination:

@@ -79,7 +79,7 @@ Because ArgoCD and Sealed Secrets handle deployment and passwords, your GitHub s
 
 SSH into your EC2 instance and run the setup script:
 ```bash
-git clone https://github.com/Hasibul-Islam-Shanto/eventconn.git
+git clone https://github.com/Hasibul-Islam-Shanto/eventconn..git
 cd eventconn
 sudo ./deployment/production/setup-ec2.sh
 ```

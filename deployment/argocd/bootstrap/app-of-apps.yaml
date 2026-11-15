@@ -12,7 +12,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+    repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn..git
     targetRevision: main
     path: deployment/argocd/production-apps
   destination:

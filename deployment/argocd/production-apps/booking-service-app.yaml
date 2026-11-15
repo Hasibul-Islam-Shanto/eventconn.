@@ -12,14 +12,14 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn..git
       targetRevision: main
       path: deployment/charts/base-microservice
       helm:
         releaseName: booking-service
         valueFiles:
           - $values/deployment/environments/production/booking-service-values.yaml
-    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn..git
       targetRevision: main
       ref: values
   destination:

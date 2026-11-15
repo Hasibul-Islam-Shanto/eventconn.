@@ -12,14 +12,14 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn..git
       targetRevision: main
       path: deployment/charts/base-microservice
       helm:
         releaseName: api-gateway
         valueFiles:
           - $values/deployment/environments/production/api-gateway-values.yaml
-    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn.git
+    - repoURL: https://github.com/Hasibul-Islam-Shanto/eventconn..git
       targetRevision: main
       ref: values
   destination:
