@@ -36,9 +36,9 @@ frontend:
   fullnameOverride: "frontend"
   replicaCount: 2
   image:
-    repository: "ghcr.io/hasibul-islam-shanto/eventconn-frontend"
+    repository: "shanto78/eventconn-frontend"
     pullPolicy: IfNotPresent
-    tag: "v1.0.0"
+    tag: "34e3ad14869c37ffc4839fc0b4d8aaa330fad9c1"
   service:
     type: NodePort
     port: 3000
@@ -79,9 +79,9 @@ api-gateway:
   fullnameOverride: "api-gateway"
   replicaCount: 2
   image:
-    repository: "ghcr.io/hasibul-islam-shanto/eventconn-api-gateway"
+    repository: "shanto78/eventconn-api-gateway"
     pullPolicy: IfNotPresent
-    tag: "v1.0.0"
+    tag: "34e3ad14869c37ffc4839fc0b4d8aaa330fad9c1"
   service:
     type: NodePort
     port: 4000
@@ -127,9 +127,9 @@ auth-service:
   fullnameOverride: "auth-service"
   replicaCount: 2
   image:
-    repository: "ghcr.io/hasibul-islam-shanto/eventconn-auth-service"
+    repository: "shanto78/eventconn-auth-service"
     pullPolicy: IfNotPresent
-    tag: "v1.0.0"
+    tag: "34e3ad14869c37ffc4839fc0b4d8aaa330fad9c1"
   service:
     type: ClusterIP
     port: 4001
@@ -157,9 +157,9 @@ event-service:
   fullnameOverride: "event-service"
   replicaCount: 2
   image:
-    repository: "ghcr.io/hasibul-islam-shanto/eventconn-event-service"
+    repository: "shanto78/eventconn-event-service"
     pullPolicy: IfNotPresent
-    tag: "v1.0.0"
+    tag: "34e3ad14869c37ffc4839fc0b4d8aaa330fad9c1"
   service:
     type: ClusterIP
     port: 4002
@@ -188,9 +188,9 @@ booking-service:
   fullnameOverride: "booking-service"
   replicaCount: 2
   image:
-    repository: "ghcr.io/hasibul-islam-shanto/eventconn-booking-service"
+    repository: "shanto78/eventconn-booking-service"
     pullPolicy: IfNotPresent
-    tag: "v1.0.0"
+    tag: "34e3ad14869c37ffc4839fc0b4d8aaa330fad9c1"
   service:
     type: ClusterIP
     port: 4003
@@ -222,9 +222,9 @@ notification-service:
   fullnameOverride: "notification-service"
   replicaCount: 1
   image:
-    repository: "ghcr.io/hasibul-islam-shanto/eventconn-notification-service"
+    repository: "shanto78/eventconn-notification-service"
     pullPolicy: IfNotPresent
-    tag: "v1.0.0"
+    tag: "34e3ad14869c37ffc4839fc0b4d8aaa330fad9c1"
   service:
     type: ClusterIP
     port: 4004
@@ -252,9 +252,9 @@ payment-service:
   fullnameOverride: "payment-service"
   replicaCount: 2
   image:
-    repository: "ghcr.io/hasibul-islam-shanto/eventconn-payment-service"
+    repository: "shanto78/eventconn-payment-service"
     pullPolicy: IfNotPresent
-    tag: "v1.0.0"
+    tag: "34e3ad14869c37ffc4839fc0b4d8aaa330fad9c1"
   service:
     type: ClusterIP
     port: 4005

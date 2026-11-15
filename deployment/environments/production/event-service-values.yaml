@@ -4,9 +4,9 @@ fullnameOverride: "event-service"
 replicaCount: 2
 
 image:
-  repository: "ghcr.io/hasibul-islam-shanto/eventconn-event-service"
+  repository: "shanto78/eventconn-event-service"
   pullPolicy: IfNotPresent
-  tag: "v1.0.0"
+  tag: "34e3ad14869c37ffc4839fc0b4d8aaa330fad9c1"
 
 service:
   type: ClusterIP
