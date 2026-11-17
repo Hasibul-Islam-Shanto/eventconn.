@@ -23,7 +23,7 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
   hosts:
-    - host: "34.228.227.204"
+    - host: "184.197.8.30"
       paths:
         - path: /api
           pathType: Prefix
@@ -66,7 +66,7 @@ env:
   PORT: "4000"
   LOG_LEVEL: "info"
   # Set to your EC2 public IP or domain:
-  CLIENT_ORIGIN: "http://34.228.227.204:3000"
+  CLIENT_ORIGIN: "http://184.197.8.30:30000"
   AUTH_SERVICE_URL: "http://auth-service:4001"
   EVENT_SERVICE_URL: "http://event-service:4002"
   BOOKING_SERVICE_URL: "http://booking-service:4003"

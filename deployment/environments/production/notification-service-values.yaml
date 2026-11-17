@@ -48,6 +48,7 @@ env:
   NODE_ENV: "production"
   PORT: "4004"
   LOG_LEVEL: "info"
+  CLIENT_ORIGIN: "http://184.197.8.30:30000"
   SMTP_HOST: "smtp.gmail.com"
   SMTP_PORT: "587"
   SMTP_SECURE: "false"

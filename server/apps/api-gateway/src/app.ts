@@ -28,6 +28,8 @@ export function createGateway(env: ServiceEnv) {
         parsed.hostname.endsWith(".eventconn.com") ||
         parsed.hostname === "localhost" ||
         parsed.hostname === "127.0.0.1" ||
+        parsed.hostname === "184.197.8.30" ||
+        parsed.hostname.endsWith(".amazonaws.com") ||
         origin === env.CLIENT_ORIGIN ||
         origin.replace(/\/$/, "") === env.CLIENT_ORIGIN?.replace(/\/$/, "") ||
         (clientOriginHostname !== "" && parsed.hostname === clientOriginHostname)

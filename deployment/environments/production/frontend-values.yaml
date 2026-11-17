@@ -23,7 +23,7 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
   hosts:
-    - host: "34.228.227.204"
+    - host: "184.197.8.30"
       paths:
         - path: /
           pathType: Prefix
@@ -68,8 +68,7 @@ readinessProbe:
 env:
   NODE_ENV: "production"
   PORT: "3000"
-  # Set to your EC2 public IP or domain:
-  NEXT_PUBLIC_API_BASE_URL: "http://34.228.227.204:30001/api"
+  NEXT_PUBLIC_API_BASE_URL: "http://184.197.8.30:30001/api"
 
 autoscaling:
   enabled: false

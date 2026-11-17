@@ -71,7 +71,7 @@ frontend:
     NODE_ENV: "production"
     PORT: "3000"
     # REPLACE <YOUR_EC2_IP> WITH YOUR ACTUAL EC2 PUBLIC IP OR DOMAIN:
-    NEXT_PUBLIC_API_BASE_URL: "http://<YOUR_EC2_IP>:4000/api"
+    NEXT_PUBLIC_API_BASE_URL: "http://184.197.8.30:30001/api"
   autoscaling:
     enabled: false
 
@@ -115,7 +115,7 @@ api-gateway:
     PORT: "4000"
     LOG_LEVEL: "info"
     # REPLACE <YOUR_EC2_IP> WITH YOUR ACTUAL EC2 PUBLIC IP OR DOMAIN:
-    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    CLIENT_ORIGIN: "http://184.197.8.30:30000"
     AUTH_SERVICE_URL: "http://auth-service:4001"
     EVENT_SERVICE_URL: "http://event-service:4002"
     BOOKING_SERVICE_URL: "http://booking-service:4003"
@@ -147,7 +147,7 @@ auth-service:
     NODE_ENV: "production"
     PORT: "4001"
     LOG_LEVEL: "info"
-    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    CLIENT_ORIGIN: "http://184.197.8.30:30000"
   migration:
     enabled: false
   autoscaling:
@@ -177,7 +177,7 @@ event-service:
     NODE_ENV: "production"
     PORT: "4002"
     LOG_LEVEL: "info"
-    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    CLIENT_ORIGIN: "http://184.197.8.30:30000"
     AUTH_SERVICE_URL: "http://auth-service:4001"
   migration:
     enabled: false
@@ -208,7 +208,7 @@ booking-service:
     NODE_ENV: "production"
     PORT: "4003"
     LOG_LEVEL: "info"
-    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    CLIENT_ORIGIN: "http://184.197.8.30:30000"
     EVENT_SERVICE_URL: "http://event-service:4002"
     AUTH_SERVICE_URL: "http://auth-service:4001"
     PAYMENT_SERVICE_URL: "http://payment-service:4005"
@@ -242,7 +242,7 @@ notification-service:
     NODE_ENV: "production"
     PORT: "4004"
     LOG_LEVEL: "info"
-    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    CLIENT_ORIGIN: "http://184.197.8.30:30000"
   migration:
     enabled: false
   autoscaling:
@@ -272,7 +272,7 @@ payment-service:
     NODE_ENV: "production"
     PORT: "4005"
     LOG_LEVEL: "info"
-    CLIENT_ORIGIN: "http://<YOUR_EC2_IP>:3000"
+    CLIENT_ORIGIN: "http://184.197.8.30:30000"
     AUTH_SERVICE_URL: "http://auth-service:4001"
     BOOKING_SERVICE_URL: "http://booking-service:4003"
   migration:
