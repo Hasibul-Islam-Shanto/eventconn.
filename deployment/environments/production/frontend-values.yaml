@@ -15,7 +15,7 @@ service:
   nodePort: 30000
 
 ingress:
-  enabled: true
+  enabled: false
   className: ""
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
