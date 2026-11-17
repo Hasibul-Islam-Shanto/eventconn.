@@ -6,7 +6,7 @@ replicaCount: 1
 image:
   repository: "shanto78/eventconn-payment-service"
   pullPolicy: IfNotPresent
-  tag: "6ce0309468a55782f3318e5abe3c6e558d5cc063"
+  tag: "2dc61edcdbedfcdf817c8c7398852e65d8585922"
 
 service:
   type: ClusterIP
