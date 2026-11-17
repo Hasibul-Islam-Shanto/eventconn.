@@ -49,6 +49,7 @@ env:
   PORT: "4003"
   LOG_LEVEL: "info"
   HOLD_MINUTES: "10"
+  EVENT_SERVICE_URL: "http://event-service:4002"
 
 envFromSecrets:
   - name: BOOKING_DATABASE_URL
