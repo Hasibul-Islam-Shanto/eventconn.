@@ -97,7 +97,7 @@ API errors are normalized into `{ status, message, code, fieldErrors }`. A 401 m
 | `/organizer/bookings`, `/organizer/bookings/[bookingId]`                         | Organizer booking APIs                        |
 | `/organizer/profile`                                                             | Authenticated organizer account               |
 
-## Validation
+## Validation & Testing
 
 ```bash
 cd client
@@ -107,6 +107,20 @@ npm test
 NEXT_PUBLIC_API_BASE_URL=http://localhost:4000/api npm run build
 npm audit
 ```
+
+### Automated UI Screenshots (Playwright)
+
+With the backend and frontend running at `http://localhost:3000`:
+
+```bash
+# Capture desktop full-page screenshots (1440x900)
+npm run screenshots
+
+# Capture both desktop and mobile viewports
+npm run screenshots -- --mobile
+```
+
+Screenshots are saved in `../screenshots/` categorizing `/public`, `/customer`, and `/organizer` routes.
 
 Focused tests cover UTC sale windows, the backend cancellation state, event response mapping, ticket capacity/price mapping, authoritative booking item snapshots, and venue-timezone conversion. End-to-end browser smoke testing requires the API Gateway and backend dependencies to be running.
 
