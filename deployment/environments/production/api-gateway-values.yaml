@@ -6,7 +6,7 @@ replicaCount: 1
 image:
   repository: "shanto78/eventconn-api-gateway"
   pullPolicy: IfNotPresent
-  tag: "80ed36cd94b5761becdf2610b62f8ddbd169bfca"
+  tag: "a757cdc23bab0de9242620aa3bde36c773250c3f"
 
 service:
   type: NodePort
