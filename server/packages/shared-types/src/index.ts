@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 export const roleSchema = z.enum(["CUSTOMER", "ORGANIZER"]);
 export type Role = z.infer<typeof roleSchema>;
@@ -24,7 +25,7 @@ export const eventMessage = (
   payload: DomainEvent["payload"],
   correlationId: string,
 ): DomainEvent => ({
-  eventId: crypto.randomUUID(),
+  eventId: randomUUID(),
   eventType,
   occurredAt: new Date().toISOString(),
   correlationId,

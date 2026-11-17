@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,6 +10,7 @@ import { useDemo } from '@/components/demo-provider';
 import { useCategories } from '@/features/events/queries';
 import { ApiError } from '@/lib/api-client';
 import { toDateInput, toTimeInput, zonedDateTimeToIso } from '@/lib/format';
+import { uuid } from '@/lib/id';
 import { EmptyState, PageHeading } from '@/components/ui';
 import { useCreateEvent, useCreateVenue, useOrganizerEvent, useUpdateEvent } from './queries';
 
@@ -48,6 +50,17 @@ const defaults: Values = {
   coverImage: '',
   status: 'DRAFT',
 };
+function generateSlug(title: string, id?: string): string {
+  const cleanTitle = title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const prefix = cleanTitle || 'event';
+  const suffix = (id || uuid()).replace(/-/g, '').slice(0, 8);
+  return `${prefix}-${suffix}`;
+}
+
 export function EventForm({ id }: { id?: string }) {
   const eventQuery = useOrganizerEvent(id || '');
   const categories = useCategories();
@@ -57,6 +70,13 @@ export function EventForm({ id }: { id?: string }) {
   const { notify } = useDemo();
   const router = useRouter();
   const existing = eventQuery.data;
+  const [createdVenue, setCreatedVenue] = useState<{
+    id: string;
+    name: string;
+    city: string;
+    address: string;
+    timezone: string;
+  } | null>(null);
   const values = existing
     ? {
         title: existing.title,
@@ -111,27 +131,35 @@ export function EventForm({ id }: { id?: string }) {
       const startDateTime = zonedDateTimeToIso(input.date, input.startTime, input.timezone);
       const endDateTime = zonedDateTimeToIso(input.date, input.endTime, input.timezone);
       let venueId = existing?.venueId;
-      if (
-        !existing ||
-        input.venue !== existing.venue.name ||
-        input.city !== existing.city ||
-        input.address !== existing.venue.address ||
-        input.timezone !== existing.venue.timezone
-      )
-        venueId = (
-          await createVenue.mutateAsync({
-            name: input.venue,
-            city: input.city,
-            address: input.address,
-            timezone: input.timezone,
-          })
-        ).data.id;
+      const venueNeedsCreation =
+        !venueId ||
+        input.venue !== (existing?.venue?.name ?? createdVenue?.name) ||
+        input.city !== (existing?.city ?? createdVenue?.city) ||
+        input.address !== (existing?.venue?.address ?? createdVenue?.address) ||
+        input.timezone !== (existing?.venue?.timezone ?? createdVenue?.timezone);
+
+      if (venueNeedsCreation) {
+        const venueRes = await createVenue.mutateAsync({
+          name: input.venue,
+          city: input.city,
+          address: input.address,
+          timezone: input.timezone,
+        });
+        venueId = venueRes.data.id;
+        setCreatedVenue({
+          id: venueId,
+          name: input.venue,
+          city: input.city,
+          address: input.address,
+          timezone: input.timezone,
+        });
+      } else if (!venueId && createdVenue) {
+        venueId = createdVenue.id;
+      }
+
       const eventInput = {
         title: input.title,
-        slug: `${input.title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')}-${(id || crypto.randomUUID()).slice(0, 8)}`,
+        slug: generateSlug(input.title, id),
         shortDescription: input.shortDescription,
         description: input.description,
         ...(input.coverImage ? { coverImageUrl: input.coverImage } : {}),
@@ -140,7 +168,8 @@ export function EventForm({ id }: { id?: string }) {
         startDateTime,
         endDateTime,
       };
-      if (id)
+
+      if (id) {
         await updateEvent.mutateAsync({
           id,
           input:
@@ -148,7 +177,7 @@ export function EventForm({ id }: { id?: string }) {
               ? { ...eventInput, status: input.status }
               : { status: input.status },
         });
-      else {
+      } else {
         const created = await createEvent.mutateAsync(eventInput);
         notify('Event created. Add ticket types before publishing.');
         router.push(`/organizer/tickets?event=${created.id}`);
@@ -157,9 +186,27 @@ export function EventForm({ id }: { id?: string }) {
       notify('Event updated successfully.');
       router.push('/organizer/events');
     } catch (reason) {
-      setError('root', {
-        message: reason instanceof ApiError ? reason.message : 'Event could not be saved.',
-      });
+      console.error('Failed to save event:', reason);
+      const apiError =
+        reason instanceof ApiError
+          ? reason
+          : typeof reason === 'object' && reason !== null && 'message' in reason
+            ? (reason as { message: string; fieldErrors?: Record<string, string> })
+            : null;
+
+      if (apiError?.fieldErrors) {
+        for (const [field, message] of Object.entries(apiError.fieldErrors)) {
+          if (field in schema.shape) {
+            setError(field as keyof Values, { message });
+          }
+        }
+      }
+
+      const errorMessage =
+        apiError?.message ||
+        (reason instanceof Error ? reason.message : 'Event could not be saved.');
+
+      setError('root', { message: errorMessage });
     }
   }
   return (

@@ -11,6 +11,7 @@ import { dateLabel, money } from '@/lib/format';
 import { useDemo } from '@/components/demo-provider';
 import { Modal } from '@/components/ui';
 import { ApiError } from '@/lib/api-client';
+import { uuid } from '@/lib/id';
 import { useCurrentUser } from '@/features/auth/queries';
 import { useBooking, useCreateBooking, useCreatePayment, useCreateTicketHold } from './queries';
 import type { TicketHold } from './api';
@@ -168,8 +169,8 @@ function Checkout({
   const current = useCurrentUser();
   const createBooking = useCreateBooking();
   const createPayment = useCreatePayment();
-  const [bookingKey] = useState(() => crypto.randomUUID());
-  const [paymentKey] = useState(() => crypto.randomUUID());
+  const [bookingKey] = useState(() => uuid());
+  const [paymentKey] = useState(() => uuid());
   const [step, setStep] = useState(0);
   const [bookingId, setBookingId] = useState('');
   const [expired, setExpired] = useState(false);

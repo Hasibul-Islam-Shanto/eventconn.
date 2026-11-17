@@ -16,6 +16,7 @@ export class ApiError extends Error implements ApiErrorShape {
   ) {
     super(message);
     this.name = 'ApiError';
+    Object.setPrototypeOf(this, ApiError.prototype);
   }
 }
 

@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import crypto, { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "../../../generated/client/index.js";
 import { z } from "zod";
 import { assert, AppError } from "../../../../../packages/config/src/http.js";
@@ -323,7 +323,7 @@ export class BookingService {
     });
     for (const b of bookings) {
       try {
-        await this.cancel(b.id, b.userId, crypto.randomUUID());
+        await this.cancel(b.id, b.userId, randomUUID());
       } catch (e) {
         if (!(e instanceof AppError && e.code === "BOOKING_LOCKED")) throw e;
       }

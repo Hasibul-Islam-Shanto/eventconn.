@@ -6,7 +6,7 @@ import express, {
 } from "express";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { logger } from "../../logger/src/index.js";
 import {
@@ -133,7 +133,7 @@ export function baseApp(service: string) {
   app.use((req, res, next) => {
     res.locals.requestId = z.uuid().safeParse(req.get("x-request-id")).success
       ? req.get("x-request-id")
-      : crypto.randomUUID();
+      : randomUUID();
     res.setHeader("x-request-id", requestId(res));
     res.on("finish", () =>
       log.info(
